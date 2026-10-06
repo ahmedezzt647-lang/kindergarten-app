@@ -65,7 +65,26 @@ app.post('/api/students/pay', async (req, res) => {
   res.json({ message: 'تم تسجيل الدفعة بنجاح' });
 });
 
-// الواجهة الرئيسية (HTML + نظام المصروفات والربح)
+// جلب المصروفات من Supabase
+app.get('/api/expenses', async (req, res) => {
+  const { data, error } = await supabase.from('expenses').select('*');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// إضافة مصروف جديد إلى Supabase
+app.post('/api/expenses', async (req, res) => {
+  const { title, amount, date } = req.body;
+  const { data, error } = await supabase.from('expenses').insert([{
+    title,
+    amount: parseFloat(amount) || 0,
+    date
+  }]);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ message: 'تم إضافة المصروف بنجاح' });
+});
+
+// الواجهة الرئيسية (HTML + Supabase)
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -104,7 +123,6 @@ app.get('/', (req, res) => {
   <div class="container">
     <h1>نظام إدارة ومحاسبة الروضة</h1>
     
-    <!-- كروت الإحصائيات والأرباح -->
     <div class="stats">
       <div class="card"><h3>إجمالي الطلاب</h3><p id="totalStudents">0</p></div>
       <div class="card"><h3>إجمالي الإيرادات (المحصول)</h3><p id="totalPaid">0 ر.س</p></div>
@@ -113,7 +131,6 @@ app.get('/', (req, res) => {
       <div class="card"><h3>المتبقي عند الطلاب</h3><p id="totalRemaining">0 ر.س</p></div>
     </div>
 
-    <!-- قسم المصروفات -->
     <h2 class="section-title">💸 تسجيل المصروفات (رواتب، إيجار، أدوات...)</h2>
     <form id="addExpenseForm" onsubmit="saveExpense(event)">
       <input type="text" id="expTitle" placeholder="بند المصروف (مثلاً: إيجار)" required>
@@ -133,7 +150,6 @@ app.get('/', (req, res) => {
       <tbody id="expensesTable"></tbody>
     </table>
 
-    <!-- قسم إدارة الطلاب -->
     <h2 class="section-title">👶 إدارة إيرادات الأطفال والرسوم</h2>
     <form id="addStudentForm" onsubmit="saveStudent(event)">
       <input type="text" id="name" placeholder="اسم الطفل" required>
@@ -168,16 +184,19 @@ app.get('/', (req, res) => {
 
   <script>
     let allStudents = [];
-    let localExpenses = JSON.parse(localStorage.getItem('expenses') || '[]');
+    let allExpenses = [];
 
-    async function fetchStudents() {
-      const res = await fetch('/api/students');
-      allStudents = await res.json();
+    async function loadAllData() {
+      const [stRes, expRes] = await Promise.all([
+        fetch('/api/students'),
+        fetch('/api/expenses')
+      ]);
+      allStudents = await stRes.json();
+      allExpenses = await expRes.json();
       renderUI();
     }
 
     function renderUI() {
-      // 1. عرض جدول الطلاب
       const tbody = document.getElementById('studentsTable');
       tbody.innerHTML = '';
       let paidSum = 0, remSum = 0, dueCount = 0;
@@ -211,23 +230,22 @@ app.get('/', (req, res) => {
         tbody.appendChild(row);
       });
 
-      // 2. عرض المصروفات
       const expBody = document.getElementById('expensesTable');
       expBody.innerHTML = '';
       let totalExpSum = 0;
 
-      localExpenses.forEach(exp => {
-        totalExpSum += parseFloat(exp.amount) || 0;
+      allExpenses.forEach(exp => {
+        const amt = parseFloat(exp.amount) || 0;
+        totalExpSum += amt;
         const row = document.createElement('tr');
         row.innerHTML = \`
           <td>\${exp.title}</td>
-          <td style="color: #e74c3c; font-weight: bold;">\${exp.amount} ر.س</td>
+          <td style="color: #e74c3c; font-weight: bold;">\${amt} ر.س</td>
           <td>\${exp.date}</td>
         \`;
         expBody.appendChild(row);
       });
 
-      // 3. الحسابات المالية وصافي الربح
       const netProfit = paidSum - totalExpSum;
 
       document.getElementById('totalStudents').innerText = allStudents.length;
@@ -241,66 +259,12 @@ app.get('/', (req, res) => {
       document.getElementById('totalRemaining').innerText = remSum + ' ر.س';
     }
 
-    function saveExpense(e) {
-      e.preventDefault();
-      const title = document.getElementById('expTitle').value;
-      const amount = parseFloat(document.getElementById('expAmount').value) || 0;
-      const date = document.getElementById('expDate').value;
-
-      localExpenses.push({ title, amount, date });
-      localStorage.setItem('expenses', JSON.stringify(localExpenses));
-      document.getElementById('addExpenseForm').reset();
-      document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
-      renderUI();
-    }
-
-    async function saveStudent(e) {
+    async function saveExpense(e) {
       e.preventDefault();
       const body = {
-        name: document.getElementById('name').value,
-        grade: document.getElementById('grade').value,
-        joinDate: document.getElementById('joinDate').value,
-        parentPhone: document.getElementById('parentPhone').value,
-        totalFee: document.getElementById('totalFee').value,
-        paidAmount: document.getElementById('paidAmount').value,
-        nextPaymentDate: document.getElementById('nextPaymentDate').value
+        title: document.getElementById('expTitle').value,
+        amount: document.getElementById('expAmount').value,
+        date: document.getElementById('expDate').value
       };
-      await fetch('/api/students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      document.getElementById('addStudentForm').reset();
-      document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
-      fetchStudents();
-    }
-
-    async function makePayment(id) {
-      const amount = prompt('أدخل المبلغ المدفوع الجديد:');
-      if (!amount) return;
-      const nextDate = prompt('أدخل تاريخ الدفعة القادمة (YYYY-MM-DD):');
-      await fetch('/api/students/pay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, amount, nextPaymentDate: nextDate })
-      });
-      fetchStudents();
-    }
-
-    function filterStudents() {
-      renderUI();
-    }
-
-    document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
-    document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
-    fetchStudents();
-  </script>
-</body>
-</html>
-  `);
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+      await fetch('/api/expenses', {
+        method: '
