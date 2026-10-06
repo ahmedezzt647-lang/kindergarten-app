@@ -1,78 +1,71 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
-const app = express();
 
+const app = express();
 app.use(express.json());
 
-// بيانات الربط مع Supabase
-const SUPABASE_URL = 'https://dcnlwakmkszglwlhydhr.supabase.co';
-const SUPABASE_KEY = sb_publishable_FgEuiSA7oISBJP2AV3OSSA_h5Uxx_l6
+// البيانات الخاصة بـ Supabase
+const SUPABASE_URL = 'https://dcnlwakmkszglwhydhr.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_FgEuiSA7OISBJP2AV3OSSA_h5Uxx_16';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // جلب قائمة الطلاب
 app.get('/api/students', async (req, res) => {
-  const { data, error } = await supabase.from('students').select('*').order('id', { ascending: false });
+  const { data, error } = await supabase.from('students').select('*');
   if (error) return res.status(500).json({ error: error.message });
 
   const today = new Date().toISOString().split('T')[0];
-  const processedStudents = (data || []).map(s => {
-    const totalFee = parseFloat(s.total_fee) || 0;
-    const paidAmount = parseFloat(s.paid_amount) || 0;
+  const processed = (data || []).map(s => {
+    const totalFee = parseFloat(s.totalFee) || 0;
+    const paidAmount = parseFloat(s.paidAmount) || 0;
     const remaining = totalFee - paidAmount;
-    const isDue = remaining > 0 && s.next_payment_date && s.next_payment_date <= today;
+    const isDue = s.nextPaymentDate && s.nextPaymentDate <= today && remaining > 0;
     return {
       id: s.id,
       name: s.name,
       grade: s.grade,
-      joinDate: s.join_date,
-      parentPhone: s.parent_phone,
+      joinDate: s.joinDate,
+      parentPhone: s.parentPhone,
       totalFee,
       paidAmount,
-      nextPaymentDate: s.next_payment_date,
       remaining,
+      nextPaymentDate: s.nextPaymentDate,
       isDue
     };
   });
-
-  res.json(processedStudents);
+  res.json(processed);
 });
 
 // إضافة طالب جديد
 app.post('/api/students', async (req, res) => {
   const { name, grade, joinDate, parentPhone, totalFee, paidAmount, nextPaymentDate } = req.body;
-  
   const { data, error } = await supabase.from('students').insert([{
-    name,
-    grade,
-    join_date: joinDate || null,
-    parent_phone: parentPhone || '',
-    total_fee: parseFloat(totalFee) || 0,
-    paid_amount: parseFloat(paidAmount) || 0,
-    next_payment_date: nextPaymentDate || null
-  }]).select();
-
+    name, grade, joinDate, parentPhone,
+    totalFee: parseFloat(totalFee) || 0,
+    paidAmount: parseFloat(paidAmount) || 0,
+    nextPaymentDate
+  }]);
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, student: data[0] });
+  res.json({ message: 'تم إضافة الطالب بنجاح' });
 });
 
-// تسجيل دفعة جديدة
+// تسجيل دفع مبلغ
 app.post('/api/students/pay', async (req, res) => {
   const { id, amount, nextPaymentDate } = req.body;
+  const { data: student, error: fetchError } = await supabase.from('students').select('paidAmount').eq('id', id).single();
+  if (fetchError) return res.status(500).json({ error: fetchError.message });
 
-  const { data: student, error: fetchError } = await supabase.from('students').select('paid_amount').eq('id', id).single();
-  if (fetchError || !student) return res.status(404).json({ error: 'الطالب غير موجود' });
+  const newPaidAmount = (parseFloat(student.paidAmount) || 0) + parseFloat(amount);
+  const { error: updateError } = await supabase.from('students').update({
+    paidAmount: newPaidAmount,
+    nextPaymentDate: nextPaymentDate || null
+  }).eq('id', id);
 
-  const newPaidAmount = (parseFloat(student.paid_amount) || 0) + (parseFloat(amount) || 0);
-  const updateData = { paid_amount: newPaidAmount };
-  if (nextPaymentDate) updateData.next_payment_date = nextPaymentDate;
-
-  const { error: updateError } = await supabase.from('students').update(updateData).eq('id', id);
   if (updateError) return res.status(500).json({ error: updateError.message });
-
-  res.json({ success: true });
+  res.json({ message: 'تم تسجيل الدفعة بنجاح' });
 });
 
-// الواجهة الرئيسية
+// الواجهة الرئيسية (HTML)
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -80,119 +73,115 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>نظام إدارة الروضة</title>
+  <title>تطبيق رياض الأطفال</title>
   <style>
-    :root { --primary: #0284c7; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
-    .container { max-width: 1100px; margin: 0 auto; }
-    h1 { color: var(--primary); text-align: center; margin-bottom: 25px; }
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
-    .stat-card { background: var(--card); padding: 18px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
-    .stat-card h3 { margin: 0; color: #64748b; font-size: 0.9em; }
-    .stat-card p { margin: 10px 0 0; font-size: 1.6em; font-weight: bold; color: var(--primary); }
-    .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 25px; }
-    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-    input, select, button { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95em; }
-    button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; }
-    button:hover { background: #0369a1; }
-    .btn-whatsapp { background: #25D366; color: white; padding: 6px 12px; text-decoration: none; border-radius: 6px; font-size: 0.85em; font-weight: bold; display: inline-block; }
-    .btn-whatsapp:hover { background: #128C7E; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { padding: 12px; text-align: right; border-bottom: 1px solid #e2e8f0; }
-    th { background: #f1f5f9; color: #475569; }
-    .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }
-    .badge-paid { background: #dcfce7; color: #166534; }
-    .badge-due { background: #fee2e2; color: #991b1b; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; direction: rtl; }
+    .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    h1 { text-align: center; color: #333; }
+    .stats { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 10px; }
+    .card { background: #eef2f5; padding: 15px; border-radius: 6px; flex: 1; text-align: center; }
+    .card h3 { margin: 0 0 5px 0; font-size: 14px; color: #666; }
+    .card p { margin: 0; font-size: 20px; font-weight: bold; color: #2c3e50; }
+    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; }
+    input, select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    button { background: #27ae60; color: white; border: none; cursor: pointer; }
+    button:hover { background: #219150; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+    th { background-color: #f8f9fa; }
+    .badge { padding: 3px 8px; border-radius: 4px; font-size: 12px; color: white; }
+    .badge-paid { background-color: #27ae60; }
+    .badge-due { background-color: #e74c3c; }
+    .btn-whatsapp { color: #25D366; text-decoration: none; font-size: 18px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🧸 نظام إدارة الروضة والرسوم</h1>
-    <div class="stats-grid">
-      <div class="stat-card"><h3>إجمالي الطلاب</h3><p id="totalStudents">0</p></div>
-      <div class="stat-card"><h3>المقبوضات</h3><p id="totalPaid">0 ر.س</p></div>
-      <div class="stat-card"><h3>المتبقي في الذمة</h3><p id="totalRemaining">0 ر.س</p></div>
-      <div class="stat-card"><h3>تنبيهات الاستحقاق</h3><p id="dueAlerts" style="color:#ef4444;">0</p></div>
+    <h1>نظام إدارة أطفال الروضة</h1>
+    <div class="stats">
+      <div class="card"><h3>إجمالي الطلاب</h3><p id="totalStudents">0</p></div>
+      <div class="card"><h3>إجمالي المدفوعات</h3><p id="totalPaid">0 ر.س</p></div>
+      <div class="card"><h3>إجمالي المتبقي</h3><p id="totalRemaining">0 ر.س</p></div>
+      <div class="card"><h3>مستحقات اليوم</h3><p id="dueAlerts">0</p></div>
     </div>
-    <div class="card">
-      <h3>➕ إضافة طالب جديد</h3>
-      <form id="addStudentForm" onsubmit="saveStudent(event)" class="form-grid">
-        <input type="text" id="name" placeholder="اسم الطالب الثلاثي" required>
-        <select id="grade" required>
-          <option value="روضة أولى">روضة أولى</option>
-          <option value="روضة ثانية">روضة ثانية</option>
-          <option value="تمهيدي">تمهيدي</option>
-        </select>
-        <input type="date" id="joinDate" required>
-        <input type="tel" id="parentPhone" placeholder="رقم جوال ولي الأمر (مثال: 966501234567)">
-        <input type="number" id="totalFee" placeholder="إجمالي المصروفات" required>
-        <input type="number" id="paidAmount" placeholder="المبلغ المدفوع حالياً" value="0">
-        <input type="date" id="nextPaymentDate" placeholder="تاريخ الدفعة القادمة">
-        <button type="submit">حفظ الطالب</button>
-      </form>
-    </div>
-    <div class="card">
-      <h3>📋 سجل الطلاب والحسابات</h3>
-      <input type="text" id="search" placeholder="🔍 بحث باسم الطالب..." onkeyup="filterStudents()" style="width:100%; box-sizing:border-box; margin-bottom:15px;">
-      <table>
-        <thead>
-          <tr>
-            <th>اسم الطالب</th>
-            <th>الصف</th>
-            <th>الجوال</th>
-            <th>المصروفات</th>
-            <th>المدفوع</th>
-            <th>المتبقي</th>
-            <th>موعد الدفعة</th>
-            <th>الحالة</th>
-            <th>إجراء</th>
-            <th>تواصل</th>
-          </tr>
-        </thead>
-        <tbody id="studentsTable"></tbody>
-      </table>
-    </div>
+
+    <form id="addStudentForm" onsubmit="saveStudent(event)">
+      <input type="text" id="name" placeholder="اسم الطفل" required>
+      <input type="text" id="grade" placeholder="الصف / المستوى" required>
+      <input type="date" id="joinDate" required>
+      <input type="text" id="parentPhone" placeholder="رقم هاتف الولي" required>
+      <input type="number" id="totalFee" placeholder="الرسوم الإجمالية" required>
+      <input type="number" id="paidAmount" placeholder="المبلغ المدفوع" required>
+      <input type="date" id="nextPaymentDate" placeholder="تاريخ الدفعة التالية">
+      <button type="submit">إضافة طالب</button>
+    </form>
+
+    <input type="text" id="search" placeholder="بحث باسم الطفل..." oninput="filterStudents()" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
+
+    <table>
+      <thead>
+        <tr>
+          <th>الاسم</th>
+          <th>الصف</th>
+          <th>رقم الولي</th>
+          <th>الرسوم</th>
+          <th>المدفوع</th>
+          <th>المتبقي</th>
+          <th>الدفعة القادمة</th>
+          <th>الحالة</th>
+          <th>إجراءات</th>
+        </tr>
+      </thead>
+      <tbody id="studentsTable"></tbody>
+    </table>
   </div>
+
   <script>
     let allStudents = [];
+
     async function fetchStudents() {
       const res = await fetch('/api/students');
       allStudents = await res.json();
       renderUI(allStudents);
     }
-    function renderUI(data) {
+
+    function renderUI(students) {
       const tbody = document.getElementById('studentsTable');
       tbody.innerHTML = '';
       let paidSum = 0, remSum = 0, dueCount = 0;
-      data.forEach(s => {
+
+      students.forEach(s => {
         paidSum += s.paidAmount;
         remSum += s.remaining;
-        if (s.isDue) dueCount++;
+        if(s.isDue) dueCount++;
 
-        let cleanPhone = s.parentPhone ? s.parentPhone.replace(/[^0-9]/g, '') : '';
-        if (cleanPhone.startsWith('05')) cleanPhone = '966' + cleanPhone.substring(1);
-        
-        const message = encodeURIComponent(\`السلام عليكم ورحمة الله وبركاته\\nولي أمر الطالب/ة: \${s.name}\\nنود تذكيركم بوجود دفعة مستحقة لرسوم الروضة قدرها: \${s.remaining} ريال سعودي.\\nيرجى السداد في أقرب وقت. شاكرين تعاونكم.\`);
-        const waUrl = cleanPhone ? \`https://wa.me/\${cleanPhone}?text=\${message}\` : '#';
+        const cleanPhone = s.parentPhone ? s.parentPhone.replace(/[^0-9]/g, '') : '';
+        const waUrl = \`https://wa.me/\${cleanPhone}\`;
 
         const row = document.createElement('tr');
-        row.innerHTML = '<td><strong>' + s.name + '</strong></td>' +
-          '<td>' + s.grade + '</td>' +
-          '<td>' + (s.parentPhone || '-') + '</td>' +
-          '<td>' + s.totalFee + ' ر.س</td>' +
-          '<td>' + s.paidAmount + ' ر.س</td>' +
-          '<td style="color:' + (s.remaining > 0 ? '#d97706' : '#166534') + '; font-weight:bold;">' + s.remaining + ' ر.س</td>' +
-          '<td>' + (s.nextPaymentDate || '-') + '</td>' +
-          '<td>' + (s.remaining === 0 ? '<span class="badge badge-paid">مكتمل</span>' : (s.isDue ? '<span class="badge badge-due">مستحق الدفع</span>' : '<span class="badge" style="background:#fef3c7; color:#92400e;">متبقي</span>')) + '</td>' +
-          '<td>' + (s.remaining > 0 ? '<button onclick="makePayment(' + s.id + ')">تسجيل دفعة</button>' : '✅') + '</td>' +
-          '<td>' + (cleanPhone ? '<a href="' + waUrl + '" target="_blank" class="btn-whatsapp">📲 واتساب</a>' : '-') + '</td>';
+        row.innerHTML = \`
+          <td>\${s.name}</td>
+          <td>\${s.grade}</td>
+          <td>\${s.parentPhone || '-'}</td>
+          <td>\${s.totalFee} ر.س</td>
+          <td>\${s.paidAmount} ر.س</td>
+          <td style="color: \${s.remaining > 0 ? '#d97706' : '#166534'}; font-weight: bold;">\${s.remaining} ر.س</td>
+          <td>\${s.nextPaymentDate || '-'}</td>
+          <td>\${s.remaining === 0 ? '<span class="badge badge-paid">مكتمل</span>' : (s.isDue ? '<span class="badge badge-due">مستحق</span>' : 'معلق')}</td>
+          <td>
+            \${s.remaining > 0 ? \`<button onclick="makePayment('\${s.id}')">تسجيل دفعة</button>\` : '✅'}
+            \${cleanPhone ? \`<a href="\${waUrl}" target="_blank" class="btn-whatsapp">📱واتساب</a>\` : '-'}
+          </td>
+        \`;
         tbody.appendChild(row);
       });
-      document.getElementById('totalStudents').innerText = data.length;
+
+      document.getElementById('totalStudents').innerText = students.length;
       document.getElementById('totalPaid').innerText = paidSum + ' ر.س';
       document.getElementById('totalRemaining').innerText = remSum + ' ر.س';
       document.getElementById('dueAlerts').innerText = dueCount;
     }
+
     async function saveStudent(e) {
       e.preventDefault();
       const body = {
@@ -212,10 +201,11 @@ app.get('/', (req, res) => {
       document.getElementById('addStudentForm').reset();
       fetchStudents();
     }
+
     async function makePayment(id) {
       const amount = prompt('أدخل المبلغ المدفوع الجديد:');
       if (!amount) return;
-      const nextDate = prompt('تاريخ الدفعة القادمة (YYYY-MM-DD):');
+      const nextDate = prompt('أدخل تاريخ الدفعة القادمة (YYYY-MM-DD):');
       await fetch('/api/students/pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -223,11 +213,13 @@ app.get('/', (req, res) => {
       });
       fetchStudents();
     }
+
     function filterStudents() {
       const q = document.getElementById('search').value.toLowerCase();
       const filtered = allStudents.filter(s => s.name.toLowerCase().includes(q));
       renderUI(filtered);
     }
+
     document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
     fetchStudents();
   </script>
