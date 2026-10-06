@@ -49,7 +49,7 @@ app.post('/api/students', async (req, res) => {
   res.json({ message: 'تم إضافة الطالب بنجاح' });
 });
 
-// تسجيل دفع مبلغ
+// تسجيل دفع مبلغ طالب
 app.post('/api/students/pay', async (req, res) => {
   const { id, amount, nextPaymentDate } = req.body;
   const { data: student, error: fetchError } = await supabase.from('students').select('paidAmount').eq('id', id).single();
@@ -65,7 +65,7 @@ app.post('/api/students/pay', async (req, res) => {
   res.json({ message: 'تم تسجيل الدفعة بنجاح' });
 });
 
-// الواجهة الرئيسية (HTML)
+// الواجهة الرئيسية (HTML + نظام المصروفات والربح)
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -73,22 +73,27 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>تطبيق رياض الأطفال</title>
+  <title>نظام إدارة ومحاسبة الروضة</title>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; direction: rtl; }
-    .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     h1 { text-align: center; color: #333; }
-    .stats { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 10px; }
-    .card { background: #eef2f5; padding: 15px; border-radius: 6px; flex: 1; text-align: center; }
-    .card h3 { margin: 0 0 5px 0; font-size: 14px; color: #666; }
-    .card p { margin: 0; font-size: 20px; font-weight: bold; color: #2c3e50; }
-    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; }
+    .stats { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 10px; flex-wrap: wrap; }
+    .card { background: #eef2f5; padding: 15px; border-radius: 6px; flex: 1; min-width: 150px; text-align: center; }
+    .card h3 { margin: 0 0 5px 0; font-size: 13px; color: #666; }
+    .card p { margin: 0; font-size: 18px; font-weight: bold; color: #2c3e50; }
+    .card.profit { background: #e8f8f5; border: 1px solid #27ae60; }
+    .card.expense { background: #fdf2e9; border: 1px solid #e67e22; }
+    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; }
     input, select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
     button { background: #27ae60; color: white; border: none; cursor: pointer; }
     button:hover { background: #219150; }
+    .btn-danger { background: #e74c3c; }
+    .btn-danger:hover { background: #c0392b; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
     th { background-color: #f8f9fa; }
+    .section-title { margin-top: 30px; border-bottom: 2px solid #27ae60; padding-bottom: 5px; color: #2c3e50; }
     .badge { padding: 3px 8px; border-radius: 4px; font-size: 12px; color: white; }
     .badge-paid { background-color: #27ae60; }
     .badge-due { background-color: #e74c3c; }
@@ -97,14 +102,39 @@ app.get('/', (req, res) => {
 </head>
 <body>
   <div class="container">
-    <h1>نظام إدارة أطفال الروضة</h1>
+    <h1>نظام إدارة ومحاسبة الروضة</h1>
+    
+    <!-- كروت الإحصائيات والأرباح -->
     <div class="stats">
       <div class="card"><h3>إجمالي الطلاب</h3><p id="totalStudents">0</p></div>
-      <div class="card"><h3>إجمالي المدفوعات</h3><p id="totalPaid">0 ر.س</p></div>
-      <div class="card"><h3>إجمالي المتبقي</h3><p id="totalRemaining">0 ر.س</p></div>
-      <div class="card"><h3>مستحقات اليوم</h3><p id="dueAlerts">0</p></div>
+      <div class="card"><h3>إجمالي الإيرادات (المحصول)</h3><p id="totalPaid">0 ر.س</p></div>
+      <div class="card expense"><h3>إجمالي المصروفات</h3><p id="totalExpenses">0 ر.س</p></div>
+      <div class="card profit"><h3>صافي الربح / الخسارة</h3><p id="netProfit" style="color: #27ae60;">0 ر.س</p></div>
+      <div class="card"><h3>المتبقي عند الطلاب</h3><p id="totalRemaining">0 ر.س</p></div>
     </div>
 
+    <!-- قسم المصروفات -->
+    <h2 class="section-title">💸 تسجيل المصروفات (رواتب، إيجار، أدوات...)</h2>
+    <form id="addExpenseForm" onsubmit="saveExpense(event)">
+      <input type="text" id="expTitle" placeholder="بند المصروف (مثلاً: إيجار)" required>
+      <input type="number" id="expAmount" placeholder="المبلغ (ر.س)" required>
+      <input type="date" id="expDate" required>
+      <button type="submit" class="btn-danger">إضافة مصروف</button>
+    </form>
+
+    <table>
+      <thead>
+        <tr>
+          <th>البند</th>
+          <th>المبلغ</th>
+          <th>التاريخ</th>
+        </tr>
+      </thead>
+      <tbody id="expensesTable"></tbody>
+    </table>
+
+    <!-- قسم إدارة الطلاب -->
+    <h2 class="section-title">👶 إدارة إيرادات الأطفال والرسوم</h2>
     <form id="addStudentForm" onsubmit="saveStudent(event)">
       <input type="text" id="name" placeholder="اسم الطفل" required>
       <input type="text" id="grade" placeholder="الصف / المستوى" required>
@@ -138,19 +168,24 @@ app.get('/', (req, res) => {
 
   <script>
     let allStudents = [];
+    let localExpenses = JSON.parse(localStorage.getItem('expenses') || '[]');
 
     async function fetchStudents() {
       const res = await fetch('/api/students');
       allStudents = await res.json();
-      renderUI(allStudents);
+      renderUI();
     }
 
-    function renderUI(students) {
+    function renderUI() {
+      // 1. عرض جدول الطلاب
       const tbody = document.getElementById('studentsTable');
       tbody.innerHTML = '';
       let paidSum = 0, remSum = 0, dueCount = 0;
 
-      students.forEach(s => {
+      const q = document.getElementById('search').value.toLowerCase();
+      const filtered = allStudents.filter(s => s.name.toLowerCase().includes(q));
+
+      filtered.forEach(s => {
         paidSum += s.paidAmount;
         remSum += s.remaining;
         if(s.isDue) dueCount++;
@@ -176,10 +211,47 @@ app.get('/', (req, res) => {
         tbody.appendChild(row);
       });
 
-      document.getElementById('totalStudents').innerText = students.length;
+      // 2. عرض المصروفات
+      const expBody = document.getElementById('expensesTable');
+      expBody.innerHTML = '';
+      let totalExpSum = 0;
+
+      localExpenses.forEach(exp => {
+        totalExpSum += parseFloat(exp.amount) || 0;
+        const row = document.createElement('tr');
+        row.innerHTML = \`
+          <td>\${exp.title}</td>
+          <td style="color: #e74c3c; font-weight: bold;">\${exp.amount} ر.س</td>
+          <td>\${exp.date}</td>
+        \`;
+        expBody.appendChild(row);
+      });
+
+      // 3. الحسابات المالية وصافي الربح
+      const netProfit = paidSum - totalExpSum;
+
+      document.getElementById('totalStudents').innerText = allStudents.length;
       document.getElementById('totalPaid').innerText = paidSum + ' ر.س';
+      document.getElementById('totalExpenses').innerText = totalExpSum + ' ر.س';
+      
+      const profitElem = document.getElementById('netProfit');
+      profitElem.innerText = netProfit + ' ر.س';
+      profitElem.style.color = netProfit >= 0 ? '#27ae60' : '#e74c3c';
+
       document.getElementById('totalRemaining').innerText = remSum + ' ر.س';
-      document.getElementById('dueAlerts').innerText = dueCount;
+    }
+
+    function saveExpense(e) {
+      e.preventDefault();
+      const title = document.getElementById('expTitle').value;
+      const amount = parseFloat(document.getElementById('expAmount').value) || 0;
+      const date = document.getElementById('expDate').value;
+
+      localExpenses.push({ title, amount, date });
+      localStorage.setItem('expenses', JSON.stringify(localExpenses));
+      document.getElementById('addExpenseForm').reset();
+      document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
+      renderUI();
     }
 
     async function saveStudent(e) {
@@ -199,6 +271,7 @@ app.get('/', (req, res) => {
         body: JSON.stringify(body)
       });
       document.getElementById('addStudentForm').reset();
+      document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
       fetchStudents();
     }
 
@@ -215,12 +288,11 @@ app.get('/', (req, res) => {
     }
 
     function filterStudents() {
-      const q = document.getElementById('search').value.toLowerCase();
-      const filtered = allStudents.filter(s => s.name.toLowerCase().includes(q));
-      renderUI(filtered);
+      renderUI();
     }
 
     document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
     fetchStudents();
   </script>
 </body>
