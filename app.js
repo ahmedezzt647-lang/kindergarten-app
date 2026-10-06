@@ -4,105 +4,112 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 app.use(express.json());
 
-// البيانات الخاصة بـ Supabase
 const SUPABASE_URL = 'https://dcnlwakmkszglwhydhr.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_FgEuiSA7OISBJP2AV3OSSA_h5Uxx_16';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// جلب قائمة الطلاب
+// جلب الطلاب
 app.get('/api/students', async (req, res) => {
-  const { data, error } = await supabase.from('students').select('*');
-  if (error) {
-    console.error('Students Fetch Error:', error);
-    return res.status(500).json({ error: error.message });
-  }
+  try {
+    const { data, error } = await supabase.from('students').select('*');
+    if (error) throw error;
 
-  const today = new Date().toISOString().split('T')[0];
-  const processed = (data || []).map(s => {
-    const totalFee = parseFloat(s.total_fee || s.totalFee) || 0;
-    const paidAmount = parseFloat(s.paid_amount || s.paidAmount) || 0;
-    const remaining = totalFee - paidAmount;
-    const nextPaymentDate = s.next_payment_date || s.nextPaymentDate;
-    const isDue = nextPaymentDate && nextPaymentDate <= today && remaining > 0;
-    return {
-      id: s.id,
-      name: s.name,
-      grade: s.grade,
-      joinDate: s.join_date || s.joinDate,
-      parentPhone: s.parent_phone || s.parentPhone,
-      totalFee,
-      paidAmount,
-      remaining,
-      nextPaymentDate,
-      isDue
-    };
-  });
-  res.json(processed);
+    const today = new Date().toISOString().split('T')[0];
+    const processed = (data || []).map(s => {
+      const totalFee = parseFloat(s.total_fee) || 0;
+      const paidAmount = parseFloat(s.paid_amount) || 0;
+      const remaining = totalFee - paidAmount;
+      const nextPaymentDate = s.next_payment_date;
+      const isDue = nextPaymentDate && nextPaymentDate <= today && remaining > 0;
+      return {
+        id: s.id,
+        name: s.name,
+        grade: s.grade,
+        joinDate: s.join_date,
+        parentPhone: s.parent_phone,
+        totalFee,
+        paidAmount,
+        remaining,
+        nextPaymentDate,
+        isDue
+      };
+    });
+    res.json(processed);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// إضافة طالب جديد
+// إضافة طالب
 app.post('/api/students', async (req, res) => {
-  const { name, grade, joinDate, parentPhone, totalFee, paidAmount, nextPaymentDate } = req.body;
-  const { data, error } = await supabase.from('students').insert([{
-    name,
-    grade,
-    join_date: joinDate,
-    parent_phone: parentPhone,
-    total_fee: parseFloat(totalFee) || 0,
-    paid_amount: parseFloat(paidAmount) || 0,
-    next_payment_date: nextPaymentDate || null
-  }]);
-  if (error) {
-    console.error('Student Insert Error:', error);
-    return res.status(500).json({ error: error.message });
+  try {
+    const { name, grade, joinDate, parentPhone, totalFee, paidAmount, nextPaymentDate } = req.body;
+    const { error } = await supabase.from('students').insert([{
+      name,
+      grade,
+      join_date: joinDate || null,
+      parent_phone: parentPhone || null,
+      total_fee: parseFloat(totalFee) || 0,
+      paid_amount: parseFloat(paidAmount) || 0,
+      next_payment_date: nextPaymentDate || null
+    }]);
+    if (error) throw error;
+    res.json({ message: 'OK' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json({ message: 'تم إضافة الطالب بنجاح' });
 });
 
-// تسجيل دفع مبلغ طالب
+// دفع مبلغ لطالب
 app.post('/api/students/pay', async (req, res) => {
-  const { id, amount, nextPaymentDate } = req.body;
-  const { data: student, error: fetchError } = await supabase.from('students').select('*').eq('id', id).single();
-  if (fetchError) return res.status(500).json({ error: fetchError.message });
+  try {
+    const { id, amount, nextPaymentDate } = req.body;
+    const { data: student, error: fetchErr } = await supabase.from('students').select('*').eq('id', id).single();
+    if (fetchErr) throw fetchErr;
 
-  const currentPaid = parseFloat(student.paid_amount || student.paidAmount) || 0;
-  const newPaidAmount = currentPaid + parseFloat(amount);
-  
-  const { error: updateError } = await supabase.from('students').update({
-    paid_amount: newPaidAmount,
-    next_payment_date: nextPaymentDate || null
-  }).eq('id', id);
+    const currentPaid = parseFloat(student.paid_amount) || 0;
+    const newPaidAmount = currentPaid + parseFloat(amount);
 
-  if (updateError) return res.status(500).json({ error: updateError.message });
-  res.json({ message: 'تم تسجيل الدفعة بنجاح' });
+    const { error: updateErr } = await supabase.from('students').update({
+      paid_amount: newPaidAmount,
+      next_payment_date: nextPaymentDate || null
+    }).eq('id', id);
+
+    if (updateErr) throw updateErr;
+    res.json({ message: 'OK' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // جلب المصروفات
 app.get('/api/expenses', async (req, res) => {
-  const { data, error } = await supabase.from('expenses').select('*');
-  if (error) {
-    console.error('Expenses Fetch Error:', error);
-    return res.status(500).json({ error: error.message });
+  try {
+    const { data, error } = await supabase.from('expenses').select('*');
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json(data || []);
 });
 
-// إضافة مصروف جديد
+// إضافة مصروف
 app.post('/api/expenses', async (req, res) => {
-  const { title, amount, date } = req.body;
-  const { data, error } = await supabase.from('expenses').insert([{
-    title,
-    amount: parseFloat(amount) || 0,
-    date
-  }]);
-  if (error) {
-    console.error('Expense Insert Error:', error);
-    return res.status(500).json({ error: error.message });
+  try {
+    const { title, amount, date } = req.body;
+    const { error } = await supabase.from('expenses').insert([{
+      title,
+      amount: parseFloat(amount) || 0,
+      date: date || null
+    }]);
+    if (error) throw error;
+    res.json({ message: 'OK' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json({ message: 'تم إضافة المصروف بنجاح' });
 });
 
-// الواجهة الرئيسية
+// الواجهة
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -112,7 +119,7 @@ app.get('/', (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>نظام إدارة ومحاسبة الروضة</title>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; direction: rtl; }
+    body { font-family: sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; direction: rtl; }
     .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     h1 { text-align: center; color: #333; }
     .stats { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 10px; flex-wrap: wrap; }
@@ -122,11 +129,10 @@ app.get('/', (req, res) => {
     .card.profit { background: #e8f8f5; border: 1px solid #27ae60; }
     .card.expense { background: #fdf2e9; border: 1px solid #e67e22; }
     form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; }
-    input, select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    input, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
     button { background: #27ae60; color: white; border: none; cursor: pointer; }
     button:hover { background: #219150; }
     .btn-danger { background: #e74c3c; }
-    .btn-danger:hover { background: #c0392b; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
     th { background-color: #f8f9fa; }
@@ -211,15 +217,15 @@ app.get('/', (req, res) => {
           fetch('/api/expenses')
         ]);
         
-        const stData = await stRes.json();
-        const expData = await expRes.json();
+        allStudents = await stRes.json();
+        allExpenses = await expRes.json();
 
-        allStudents = Array.isArray(stData) ? stData : [];
-        allExpenses = Array.isArray(expData) ? expData : [];
+        if (!Array.isArray(allStudents)) allStudents = [];
+        if (!Array.isArray(allExpenses)) allExpenses = [];
         
         renderUI();
       } catch (err) {
-        console.error('Load Error:', err);
+        console.error('Error loading data:', err);
       }
     }
 
@@ -268,7 +274,7 @@ app.get('/', (req, res) => {
         row.innerHTML = \`
           <td>\${exp.title}</td>
           <td style="color: #e74c3c; font-weight: bold;">\${amt} ر.س</td>
-          <td>\${exp.date}</td>
+          <td>\${exp.date || '-'}</td>
         \`;
         expBody.appendChild(row);
       });
@@ -293,14 +299,18 @@ app.get('/', (req, res) => {
         amount: document.getElementById('expAmount').value,
         date: document.getElementById('expDate').value
       };
-      await fetch('/api/expenses', {
+      const res = await fetch('/api/expenses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      document.getElementById('addExpenseForm').reset();
-      document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
-      loadAllData();
+      if (res.ok) {
+        document.getElementById('addExpenseForm').reset();
+        document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
+        loadAllData();
+      } else {
+        alert('حدث خطأ أثناء الحفظ!');
+      }
     }
 
     async function saveStudent(e) {
@@ -314,14 +324,18 @@ app.get('/', (req, res) => {
         paidAmount: document.getElementById('paidAmount').value,
         nextPaymentDate: document.getElementById('nextPaymentDate').value
       };
-      await fetch('/api/students', {
+      const res = await fetch('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      document.getElementById('addStudentForm').reset();
-      document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
-      loadAllData();
+      if (res.ok) {
+        document.getElementById('addStudentForm').reset();
+        document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
+        loadAllData();
+      } else {
+        alert('حدث خطأ أثناء الحفظ!');
+      }
     }
 
     async function makePayment(id) {
@@ -350,6 +364,4 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
