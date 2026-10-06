@@ -12,24 +12,28 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // جلب قائمة الطلاب
 app.get('/api/students', async (req, res) => {
   const { data, error } = await supabase.from('students').select('*');
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error('Students Fetch Error:', error);
+    return res.status(500).json({ error: error.message });
+  }
 
   const today = new Date().toISOString().split('T')[0];
   const processed = (data || []).map(s => {
-    const totalFee = parseFloat(s.totalFee) || 0;
-    const paidAmount = parseFloat(s.paidAmount) || 0;
+    const totalFee = parseFloat(s.total_fee || s.totalFee) || 0;
+    const paidAmount = parseFloat(s.paid_amount || s.paidAmount) || 0;
     const remaining = totalFee - paidAmount;
-    const isDue = s.nextPaymentDate && s.nextPaymentDate <= today && remaining > 0;
+    const nextPaymentDate = s.next_payment_date || s.nextPaymentDate;
+    const isDue = nextPaymentDate && nextPaymentDate <= today && remaining > 0;
     return {
       id: s.id,
       name: s.name,
       grade: s.grade,
-      joinDate: s.joinDate,
-      parentPhone: s.parentPhone,
+      joinDate: s.join_date || s.joinDate,
+      parentPhone: s.parent_phone || s.parentPhone,
       totalFee,
       paidAmount,
       remaining,
-      nextPaymentDate: s.nextPaymentDate,
+      nextPaymentDate,
       isDue
     };
   });
@@ -40,39 +44,50 @@ app.get('/api/students', async (req, res) => {
 app.post('/api/students', async (req, res) => {
   const { name, grade, joinDate, parentPhone, totalFee, paidAmount, nextPaymentDate } = req.body;
   const { data, error } = await supabase.from('students').insert([{
-    name, grade, joinDate, parentPhone,
-    totalFee: parseFloat(totalFee) || 0,
-    paidAmount: parseFloat(paidAmount) || 0,
-    nextPaymentDate
+    name,
+    grade,
+    join_date: joinDate,
+    parent_phone: parentPhone,
+    total_fee: parseFloat(totalFee) || 0,
+    paid_amount: parseFloat(paidAmount) || 0,
+    next_payment_date: nextPaymentDate || null
   }]);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error('Student Insert Error:', error);
+    return res.status(500).json({ error: error.message });
+  }
   res.json({ message: 'تم إضافة الطالب بنجاح' });
 });
 
 // تسجيل دفع مبلغ طالب
 app.post('/api/students/pay', async (req, res) => {
   const { id, amount, nextPaymentDate } = req.body;
-  const { data: student, error: fetchError } = await supabase.from('students').select('paidAmount').eq('id', id).single();
+  const { data: student, error: fetchError } = await supabase.from('students').select('*').eq('id', id).single();
   if (fetchError) return res.status(500).json({ error: fetchError.message });
 
-  const newPaidAmount = (parseFloat(student.paidAmount) || 0) + parseFloat(amount);
+  const currentPaid = parseFloat(student.paid_amount || student.paidAmount) || 0;
+  const newPaidAmount = currentPaid + parseFloat(amount);
+  
   const { error: updateError } = await supabase.from('students').update({
-    paidAmount: newPaidAmount,
-    nextPaymentDate: nextPaymentDate || null
+    paid_amount: newPaidAmount,
+    next_payment_date: nextPaymentDate || null
   }).eq('id', id);
 
   if (updateError) return res.status(500).json({ error: updateError.message });
   res.json({ message: 'تم تسجيل الدفعة بنجاح' });
 });
 
-// جلب المصروفات من Supabase
+// جلب المصروفات
 app.get('/api/expenses', async (req, res) => {
   const { data, error } = await supabase.from('expenses').select('*');
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error('Expenses Fetch Error:', error);
+    return res.status(500).json({ error: error.message });
+  }
   res.json(data || []);
 });
 
-// إضافة مصروف جديد إلى Supabase
+// إضافة مصروف جديد
 app.post('/api/expenses', async (req, res) => {
   const { title, amount, date } = req.body;
   const { data, error } = await supabase.from('expenses').insert([{
@@ -80,11 +95,14 @@ app.post('/api/expenses', async (req, res) => {
     amount: parseFloat(amount) || 0,
     date
   }]);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error('Expense Insert Error:', error);
+    return res.status(500).json({ error: error.message });
+  }
   res.json({ message: 'تم إضافة المصروف بنجاح' });
 });
 
-// الواجهة الرئيسية (HTML + Supabase)
+// الواجهة الرئيسية
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -187,13 +205,22 @@ app.get('/', (req, res) => {
     let allExpenses = [];
 
     async function loadAllData() {
-      const [stRes, expRes] = await Promise.all([
-        fetch('/api/students'),
-        fetch('/api/expenses')
-      ]);
-      allStudents = await stRes.json();
-      allExpenses = await expRes.json();
-      renderUI();
+      try {
+        const [stRes, expRes] = await Promise.all([
+          fetch('/api/students'),
+          fetch('/api/expenses')
+        ]);
+        
+        const stData = await stRes.json();
+        const expData = await expRes.json();
+
+        allStudents = Array.isArray(stData) ? stData : [];
+        allExpenses = Array.isArray(expData) ? expData : [];
+        
+        renderUI();
+      } catch (err) {
+        console.error('Load Error:', err);
+      }
     }
 
     function renderUI() {
@@ -202,14 +229,14 @@ app.get('/', (req, res) => {
       let paidSum = 0, remSum = 0, dueCount = 0;
 
       const q = document.getElementById('search').value.toLowerCase();
-      const filtered = allStudents.filter(s => s.name.toLowerCase().includes(q));
+      const filtered = allStudents.filter(s => s.name && s.name.toLowerCase().includes(q));
 
       filtered.forEach(s => {
         paidSum += s.paidAmount;
         remSum += s.remaining;
         if(s.isDue) dueCount++;
 
-        const cleanPhone = s.parentPhone ? s.parentPhone.replace(/[^0-9]/g, '') : '';
+        const cleanPhone = s.parentPhone ? String(s.parentPhone).replace(/[^0-9]/g, '') : '';
         const waUrl = \`https://wa.me/\${cleanPhone}\`;
 
         const row = document.createElement('tr');
@@ -267,4 +294,62 @@ app.get('/', (req, res) => {
         date: document.getElementById('expDate').value
       };
       await fetch('/api/expenses', {
-        method: '
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      document.getElementById('addExpenseForm').reset();
+      document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
+      loadAllData();
+    }
+
+    async function saveStudent(e) {
+      e.preventDefault();
+      const body = {
+        name: document.getElementById('name').value,
+        grade: document.getElementById('grade').value,
+        joinDate: document.getElementById('joinDate').value,
+        parentPhone: document.getElementById('parentPhone').value,
+        totalFee: document.getElementById('totalFee').value,
+        paidAmount: document.getElementById('paidAmount').value,
+        nextPaymentDate: document.getElementById('nextPaymentDate').value
+      };
+      await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      document.getElementById('addStudentForm').reset();
+      document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
+      loadAllData();
+    }
+
+    async function makePayment(id) {
+      const amount = prompt('أدخل المبلغ المدفوع الجديد:');
+      if (!amount) return;
+      const nextDate = prompt('أدخل تاريخ الدفعة القادمة (YYYY-MM-DD):');
+      await fetch('/api/students/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, amount, nextPaymentDate: nextDate })
+      });
+      loadAllData();
+    }
+
+    function filterStudents() {
+      renderUI();
+    }
+
+    document.getElementById('joinDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
+    loadAllData();
+  </script>
+</body>
+</html>
+  `);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
