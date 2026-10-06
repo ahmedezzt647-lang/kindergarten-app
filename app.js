@@ -1,73 +1,78 @@
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
 const app = express();
 
 app.use(express.json());
 
-let students = [
-  {
-    id: 1,
-    name: "أحمد خالد العتيبي",
-    grade: "روضة أولى",
-    joinDate: "2026-09-01",
-    parentPhone: "0501234567",
-    totalFee: 3000,
-    paidAmount: 1500,
-    nextPaymentDate: "2026-10-15"
-  },
-  {
-    id: 2,
-    name: "سارة محمد الغامدي",
-    grade: "تمهيدي",
-    joinDate: "2026-09-01",
-    parentPhone: "0559876543",
-    totalFee: 3500,
-    paidAmount: 3500,
-    nextPaymentDate: "2026-11-01"
-  }
-];
+// بيانات الربط مع Supabase
+const SUPABASE_URL = 'https://dcnlwakmkszglwlhydhr.supabase.co';
+const SUPABASE_KEY = sb_publishable_FgEuiSA7oISBJP2AV3OSSA_h5Uxx_l6
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-app.get('/api/students', (req, res) => {
+// جلب قائمة الطلاب
+app.get('/api/students', async (req, res) => {
+  const { data, error } = await supabase.from('students').select('*').order('id', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+
   const today = new Date().toISOString().split('T')[0];
-  const processedStudents = students.map(s => {
-    const remaining = s.totalFee - s.paidAmount;
-    const isDue = remaining > 0 && s.nextPaymentDate <= today;
-    return { ...s, remaining, isDue };
+  const processedStudents = (data || []).map(s => {
+    const totalFee = parseFloat(s.total_fee) || 0;
+    const paidAmount = parseFloat(s.paid_amount) || 0;
+    const remaining = totalFee - paidAmount;
+    const isDue = remaining > 0 && s.next_payment_date && s.next_payment_date <= today;
+    return {
+      id: s.id,
+      name: s.name,
+      grade: s.grade,
+      joinDate: s.join_date,
+      parentPhone: s.parent_phone,
+      totalFee,
+      paidAmount,
+      nextPaymentDate: s.next_payment_date,
+      remaining,
+      isDue
+    };
   });
+
   res.json(processedStudents);
 });
 
-app.post('/api/students', (req, res) => {
+// إضافة طالب جديد
+app.post('/api/students', async (req, res) => {
   const { name, grade, joinDate, parentPhone, totalFee, paidAmount, nextPaymentDate } = req.body;
-  if (!name || !grade || !totalFee) {
-    return res.status(400).json({ error: 'الرجاء إدخال البيانات الأساسية' });
-  }
-
-  const newStudent = {
-    id: Date.now(),
+  
+  const { data, error } = await supabase.from('students').insert([{
     name,
     grade,
-    joinDate: joinDate || new Date().toISOString().split('T')[0],
-    parentPhone: parentPhone || '',
-    totalFee: parseFloat(totalFee) || 0,
-    paidAmount: parseFloat(paidAmount) || 0,
-    nextPaymentDate: nextPaymentDate || ''
-  };
+    join_date: joinDate || null,
+    parent_phone: parentPhone || '',
+    total_fee: parseFloat(totalFee) || 0,
+    paid_amount: parseFloat(paidAmount) || 0,
+    next_payment_date: nextPaymentDate || null
+  }]).select();
 
-  students.push(newStudent);
-  res.json({ success: true, student: newStudent });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, student: data[0] });
 });
 
-app.post('/api/students/pay', (req, res) => {
+// تسجيل دفعة جديدة
+app.post('/api/students/pay', async (req, res) => {
   const { id, amount, nextPaymentDate } = req.body;
-  const student = students.find(s => s.id === parseInt(id));
-  if (!student) return res.status(404).json({ error: 'الطالب غير موجود' });
 
-  student.paidAmount += parseFloat(amount) || 0;
-  if (nextPaymentDate) student.nextPaymentDate = nextPaymentDate;
+  const { data: student, error: fetchError } = await supabase.from('students').select('paid_amount').eq('id', id).single();
+  if (fetchError || !student) return res.status(404).json({ error: 'الطالب غير موجود' });
+
+  const newPaidAmount = (parseFloat(student.paid_amount) || 0) + (parseFloat(amount) || 0);
+  const updateData = { paid_amount: newPaidAmount };
+  if (nextPaymentDate) updateData.next_payment_date = nextPaymentDate;
+
+  const { error: updateError } = await supabase.from('students').update(updateData).eq('id', id);
+  if (updateError) return res.status(500).json({ error: updateError.message });
 
   res.json({ success: true });
 });
 
+// الواجهة الرئيسية
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -90,6 +95,8 @@ app.get('/', (req, res) => {
     input, select, button { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95em; }
     button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; }
     button:hover { background: #0369a1; }
+    .btn-whatsapp { background: #25D366; color: white; padding: 6px 12px; text-decoration: none; border-radius: 6px; font-size: 0.85em; font-weight: bold; display: inline-block; }
+    .btn-whatsapp:hover { background: #128C7E; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; }
     th, td { padding: 12px; text-align: right; border-bottom: 1px solid #e2e8f0; }
     th { background: #f1f5f9; color: #475569; }
@@ -117,7 +124,7 @@ app.get('/', (req, res) => {
           <option value="تمهيدي">تمهيدي</option>
         </select>
         <input type="date" id="joinDate" required>
-        <input type="tel" id="parentPhone" placeholder="رقم جوال ولي الأمر">
+        <input type="tel" id="parentPhone" placeholder="رقم جوال ولي الأمر (مثال: 966501234567)">
         <input type="number" id="totalFee" placeholder="إجمالي المصروفات" required>
         <input type="number" id="paidAmount" placeholder="المبلغ المدفوع حالياً" value="0">
         <input type="date" id="nextPaymentDate" placeholder="تاريخ الدفعة القادمة">
@@ -139,6 +146,7 @@ app.get('/', (req, res) => {
             <th>موعد الدفعة</th>
             <th>الحالة</th>
             <th>إجراء</th>
+            <th>تواصل</th>
           </tr>
         </thead>
         <tbody id="studentsTable"></tbody>
@@ -160,6 +168,13 @@ app.get('/', (req, res) => {
         paidSum += s.paidAmount;
         remSum += s.remaining;
         if (s.isDue) dueCount++;
+
+        let cleanPhone = s.parentPhone ? s.parentPhone.replace(/[^0-9]/g, '') : '';
+        if (cleanPhone.startsWith('05')) cleanPhone = '966' + cleanPhone.substring(1);
+        
+        const message = encodeURIComponent(\`السلام عليكم ورحمة الله وبركاته\\nولي أمر الطالب/ة: \${s.name}\\nنود تذكيركم بوجود دفعة مستحقة لرسوم الروضة قدرها: \${s.remaining} ريال سعودي.\\nيرجى السداد في أقرب وقت. شاكرين تعاونكم.\`);
+        const waUrl = cleanPhone ? \`https://wa.me/\${cleanPhone}?text=\${message}\` : '#';
+
         const row = document.createElement('tr');
         row.innerHTML = '<td><strong>' + s.name + '</strong></td>' +
           '<td>' + s.grade + '</td>' +
@@ -169,7 +184,8 @@ app.get('/', (req, res) => {
           '<td style="color:' + (s.remaining > 0 ? '#d97706' : '#166534') + '; font-weight:bold;">' + s.remaining + ' ر.س</td>' +
           '<td>' + (s.nextPaymentDate || '-') + '</td>' +
           '<td>' + (s.remaining === 0 ? '<span class="badge badge-paid">مكتمل</span>' : (s.isDue ? '<span class="badge badge-due">مستحق الدفع</span>' : '<span class="badge" style="background:#fef3c7; color:#92400e;">متبقي</span>')) + '</td>' +
-          '<td>' + (s.remaining > 0 ? '<button onclick="makePayment(' + s.id + ')">تسجيل دفعة</button>' : '✅') + '</td>';
+          '<td>' + (s.remaining > 0 ? '<button onclick="makePayment(' + s.id + ')">تسجيل دفعة</button>' : '✅') + '</td>' +
+          '<td>' + (cleanPhone ? '<a href="' + waUrl + '" target="_blank" class="btn-whatsapp">📲 واتساب</a>' : '-') + '</td>';
         tbody.appendChild(row);
       });
       document.getElementById('totalStudents').innerText = data.length;
