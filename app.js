@@ -15,7 +15,7 @@ let students = [];
 let expenses = [];
 let paymentsHistory = [];
 let attendance = [];
-let bookSales = []; // سجل مبيعات الكتب
+let bookSales = [];
 
 app.get('/', (req, res) => {
   res.send(`
@@ -25,7 +25,7 @@ app.get('/', (req, res) => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام إدارة ومحاسبة الروضة الشامل</title>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
     <style>
       * { box-sizing: border-box; }
       body { 
@@ -34,29 +34,53 @@ app.get('/', (req, res) => {
         margin: 0; 
         padding: 24px 16px; 
         color: #1e293b; 
+        font-size: 15px;
       }
       .container { 
-        max-width: 1300px; 
+        max-width: 1320px; 
         margin: 0 auto; 
         background: #ffffff; 
-        padding: 30px; 
-        border-radius: 16px; 
+        padding: 32px; 
+        border-radius: 20px; 
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); 
       }
-      .header-title { text-align: center; margin-bottom: 30px; }
-      .header-title h1 { color: #0f172a; font-size: 28px; font-weight: 700; margin: 0 0 8px 0; }
-      .header-title p { color: #64748b; font-size: 14px; margin: 0; }
+      .header-title { 
+        text-align: center; 
+        margin-bottom: 35px; 
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo-img {
+        width: 110px;
+        height: 110px;
+        object-fit: contain;
+        filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+      }
+      .header-title h1 { 
+        color: #0f172a; 
+        font-size: 32px; 
+        font-weight: 800; 
+        margin: 0; 
+      }
+      .header-title p { 
+        color: #64748b; 
+        font-size: 16px; 
+        margin: 0; 
+        font-weight: 500;
+      }
       
       .stats-cards { 
         display: grid; 
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-        gap: 16px; 
-        margin-bottom: 30px; 
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); 
+        gap: 18px; 
+        margin-bottom: 35px; 
       }
       .card { 
-        padding: 20px 16px; 
+        padding: 22px 18px; 
         background: #ffffff; 
-        border-radius: 14px; 
+        border-radius: 16px; 
         text-align: center; 
         border: 1px solid #e2e8f0; 
         transition: all 0.25s ease; 
@@ -65,7 +89,7 @@ app.get('/', (req, res) => {
         overflow: hidden;
       }
       .card:hover { transform: translateY(-4px); box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.08); }
-      .card::before { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 4px; }
+      .card::before { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 5px; }
       .card.blue::before { background: #3b82f6; }
       .card.teal::before { background: #0d9488; }
       .card.orange::before { background: #f59e0b; }
@@ -73,20 +97,20 @@ app.get('/', (req, res) => {
       .card.red::before { background: #ef4444; }
       .card.purple::before { background: #8b5cf6; }
 
-      .card h3 { margin: 0 0 8px 0; font-size: 13px; color: #64748b; font-weight: 500; }
-      .card .number { font-size: 22px; font-weight: 700; color: #0f172a; }
-      .card .hint { font-size: 11px; color: #94a3b8; margin-top: 6px; }
+      .card h3 { margin: 0 0 10px 0; font-size: 15px; color: #64748b; font-weight: 600; }
+      .card .number { font-size: 30px; font-weight: 800; color: #0f172a; }
+      .card .hint { font-size: 13px; color: #94a3b8; margin-top: 8px; font-weight: 500; }
 
       .section-title { 
-        font-size: 16px; 
-        margin: 32px 0 16px 0; 
-        padding-bottom: 8px; 
+        font-size: 19px; 
+        margin: 36px 0 18px 0; 
+        padding-bottom: 10px; 
         border-bottom: 2px solid #e2e8f0; 
         color: #0f172a; 
         display: flex; 
         justify-content: space-between; 
         align-items: center; 
-        font-weight: 700; 
+        font-weight: 800; 
       }
       .section-title.red { border-bottom-color: #fca5a5; color: #dc2626; }
       .section-title.green { border-bottom-color: #6ee7b7; color: #059669; }
@@ -95,33 +119,33 @@ app.get('/', (req, res) => {
 
       .form-group { 
         display: flex; 
-        gap: 12px; 
-        margin-bottom: 20px; 
+        gap: 14px; 
+        margin-bottom: 24px; 
         flex-wrap: wrap; 
         background: #f8fafc; 
-        padding: 18px; 
-        border-radius: 12px; 
+        padding: 22px; 
+        border-radius: 14px; 
         border: 1px solid #f1f5f9; 
       }
       input, select { 
-        padding: 11px 14px; 
+        padding: 13px 16px; 
         border: 1px solid #cbd5e1; 
-        border-radius: 8px; 
-        font-size: 13px; 
+        border-radius: 10px; 
+        font-size: 15px; 
         font-family: inherit;
         background: #ffffff;
         flex: 1;
-        min-width: 140px;
+        min-width: 160px;
         outline: none;
       }
       input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
 
       button { 
-        padding: 11px 18px;
-        border-radius: 8px;
-        font-size: 13px;
+        padding: 13px 22px;
+        border-radius: 10px;
+        font-size: 15px;
         font-family: inherit;
-        font-weight: 600;
+        font-weight: 700;
         border: none;
         cursor: pointer;
         transition: all 0.2s ease;
@@ -130,24 +154,24 @@ app.get('/', (req, res) => {
       button.btn-expense { background: #ef4444; color: #ffffff; }
       button.btn-success { background: #10b981; color: #ffffff; }
       button.btn-orange { background: #f59e0b; color: #ffffff; }
-      button.btn-pay { background: #059669; color: #ffffff; padding: 6px 12px; font-size: 12px; }
-      button.btn-absent { background: #f43f5e; color: #ffffff; padding: 6px 12px; font-size: 12px; }
-      button.btn-delete { background: #94a3b8; color: #ffffff; padding: 5px 10px; font-size: 11px; }
-      button.btn-toggle { background: #f1f5f9; color: #475569; font-size: 12px; padding: 6px 12px; border: 1px solid #e2e8f0; }
+      button.btn-pay { background: #059669; color: #ffffff; padding: 7px 14px; font-size: 13px; }
+      button.btn-absent { background: #f43f5e; color: #ffffff; padding: 7px 14px; font-size: 13px; }
+      button.btn-delete { background: #94a3b8; color: #ffffff; padding: 6px 12px; font-size: 12px; }
+      button.btn-toggle { background: #f1f5f9; color: #475569; font-size: 13px; padding: 8px 14px; border: 1px solid #e2e8f0; }
 
-      .table-responsive { overflow-x: auto; border-radius: 12px; border: 1px solid #e2e8f0; margin-top: 12px; }
+      .table-responsive { overflow-x: auto; border-radius: 14px; border: 1px solid #e2e8f0; margin-top: 14px; }
       table { width: 100%; border-collapse: collapse; background: #ffffff; }
-      th, td { padding: 12px 10px; text-align: center; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
-      th { background-color: #f8fafc; color: #475569; font-weight: 600; }
+      th, td { padding: 14px 12px; text-align: center; font-size: 15px; border-bottom: 1px solid #f1f5f9; }
+      th { background-color: #f8fafc; color: #475569; font-weight: 700; font-size: 15px; }
 
-      .badge-danger { color: #dc2626; font-weight: 700; background: #fef2f2; padding: 4px 8px; border-radius: 6px; }
-      .badge-success { color: #059669; font-weight: 700; background: #ecfdf5; padding: 4px 8px; border-radius: 6px; }
-      .fee-breakdown { font-size: 11px; color: #64748b; display: block; margin-top: 3px; }
+      .badge-danger { color: #dc2626; font-weight: 800; background: #fef2f2; padding: 5px 10px; border-radius: 8px; font-size: 14px; }
+      .badge-success { color: #059669; font-weight: 800; background: #ecfdf5; padding: 5px 10px; border-radius: 8px; font-size: 14px; }
+      .fee-breakdown { font-size: 12px; color: #64748b; display: block; margin-top: 4px; }
       
-      .details-box { background: #ffffff; padding: 22px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 25px; display: none; }
+      .details-box { background: #ffffff; padding: 26px; border: 1px solid #e2e8f0; border-radius: 14px; margin-bottom: 28px; display: none; }
       .details-box.active { display: block; }
 
-      .print-receipt { display: none; padding: 30px; border: 2px dashed #0f172a; margin-top: 20px; background: #fff; border-radius: 12px; }
+      .print-receipt { display: none; padding: 35px; border: 2px dashed #0f172a; margin-top: 20px; background: #fff; border-radius: 14px; }
       @media print {
         body * { visibility: hidden; }
         .print-receipt, .print-receipt * { visibility: visible; }
@@ -158,8 +182,25 @@ app.get('/', (req, res) => {
   <body>
     <div class="container">
       <div class="header-title">
+        <!-- شعار لوجو الروضة المحتوي على أطفال -->
+        <svg class="logo-img" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="100" cy="100" r="90" fill="#e0f2fe"/>
+          <!-- مبنى الروضة -->
+          <path d="M40 140 L160 140 L160 100 L100 60 L40 100 Z" fill="#38bdf8"/>
+          <path d="M85 140 L85 110 L115 110 L115 140 Z" fill="#f59e0b"/>
+          <!-- أطفال بالروضة -->
+          <circle cx="70" cy="120" r="12" fill="#f43f5e"/>
+          <circle cx="70" cy="116" r="8" fill="#fde047"/>
+          <circle cx="130" cy="120" r="12" fill="#10b981"/>
+          <circle cx="130" cy="116" r="8" fill="#fde047"/>
+          <!-- طفل في المنتصف يحمل قلماً/كتاباً -->
+          <circle cx="100" cy="90" r="10" fill="#fb923c"/>
+          <path d="M90 105 Q100 95 110 105" stroke="#0284c7" stroke-width="4" fill="none"/>
+          <circle cx="100" cy="80" r="14" fill="#fecdd3"/>
+          <path d="M92 76 Q100 70 108 76" stroke="#451a03" stroke-width="3" fill="none"/>
+        </svg>
         <h1>🏫 نظام إدارة ومحاسبة الروضة</h1>
-        <p>لوحة التحكم الشاملة لإدارة الطلاب والرسوم والمصروفات والكتب</p>
+        <p>لوحة التحكم الشاملة لإدارة الطلاب والرسوم والمصروفات والكتب الدراسية</p>
       </div>
       
       <div class="stats-cards">
@@ -311,10 +352,10 @@ app.get('/', (req, res) => {
           <span>📊 التقرير المالي الختامي</span>
           <button class="btn-toggle" onclick="hideBox('profit-details-box')">إغلاق ✖</button>
         </div>
-        <div style="display:flex; justify-content:space-around; background:#f8fafc; padding:20px; border-radius:12px; border: 1px solid #e2e8f0;">
-          <div><h4 style="margin:0 0 6px 0; color:#64748b;">المقبوضات</h4><p style="color:#059669; font-weight:700; font-size:20px; margin:0;" id="rep-rev">0 ر.س</p></div>
-          <div><h4 style="margin:0 0 6px 0; color:#64748b;">المصروفات</h4><p style="color:#dc2626; font-weight:700; font-size:20px; margin:0;" id="rep-exp">0 ر.س</p></div>
-          <div><h4 style="margin:0 0 6px 0; color:#64748b;">صافي الأرباح</h4><p style="color:#8b5cf6; font-weight:700; font-size:20px; margin:0;" id="rep-net">0 ر.س</p></div>
+        <div style="display:flex; justify-content:space-around; background:#f8fafc; padding:22px; border-radius:14px; border: 1px solid #e2e8f0;">
+          <div><h4 style="margin:0 0 6px 0; color:#64748b; font-size:16px;">المقبوضات</h4><p style="color:#059669; font-weight:800; font-size:24px; margin:0;" id="rep-rev">0 ر.س</p></div>
+          <div><h4 style="margin:0 0 6px 0; color:#64748b; font-size:16px;">المصروفات</h4><p style="color:#dc2626; font-weight:800; font-size:24px; margin:0;" id="rep-exp">0 ر.س</p></div>
+          <div><h4 style="margin:0 0 6px 0; color:#64748b; font-size:16px;">صافي الأرباح</h4><p style="color:#8b5cf6; font-weight:800; font-size:24px; margin:0;" id="rep-net">0 ر.س</p></div>
         </div>
       </div>
 
@@ -383,14 +424,14 @@ app.get('/', (req, res) => {
 
       <!-- قالب الإيصال المخصص للطباعة -->
       <div id="receipt-print-area" class="print-receipt">
-        <h2 style="text-align:center; color:#0f172a; margin-bottom: 20px;">إيصال استلام نقدية - روضة الأطفال</h2>
+        <h2 style="text-align:center; color:#0f172a; margin-bottom: 20px; font-size:26px;">إيصال استلام نقدية - روضة الأطفال</h2>
         <hr style="border: 0; border-top: 1px solid #cbd5e1; margin-bottom:20px;">
-        <p style="font-size:16px;"><strong>رقم الإيصال:</strong> <span id="rec-id"></span></p>
-        <p style="font-size:16px;"><strong>التاريخ:</strong> <span id="rec-date"></span></p>
-        <p style="font-size:16px;"><strong>استلمنا من الطالب/ة:</strong> <span id="rec-name"></span></p>
-        <p style="font-size:18px; color:#059669;"><strong>مبلغ وقدره:</strong> <span id="rec-amount"></span> ر.س</p>
+        <p style="font-size:18px;"><strong>رقم الإيصال:</strong> <span id="rec-id"></span></p>
+        <p style="font-size:18px;"><strong>التاريخ:</strong> <span id="rec-date"></span></p>
+        <p style="font-size:18px;"><strong>استلمنا من الطالب/ة:</strong> <span id="rec-name"></span></p>
+        <p style="font-size:20px; color:#059669;"><strong>مبلغ وقدره:</strong> <span id="rec-amount"></span> ر.س</p>
         <br><br>
-        <div style="display:flex; justify-content:space-between; font-size:15px;">
+        <div style="display:flex; justify-content:space-between; font-size:17px;">
           <p>توقيع المحاسب: ....................</p>
           <p>ختم الروضة: ....................</p>
         </div>
@@ -593,8 +634,6 @@ app.get('/', (req, res) => {
 
           const attRec = allAttendance.find(a => a.studentId === s.id && a.date === today);
           const attStatus = attRec ? (attRec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'غير مسجل';
-
-          const breakdown = \`اشتراك: \${monthlyFee} | كتب: \${booksTotal} ر.س\`;
 
           return \`<tr>
             <td><b>\${s.name}</b></td>
