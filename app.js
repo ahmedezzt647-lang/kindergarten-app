@@ -15,7 +15,8 @@ app.use((req, res, next) => {
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+// استخدام إعدادات آمنة تتوافق تماماً مع المفتاح السري
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }) : null;
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -24,10 +25,11 @@ app.get('/', (req, res) => {
 app.get('/api/students', async (req, res) => {
   try {
     if (supabase) {
-      const { data } = await supabase.from('students').select('*');
+      const { data, error } = await supabase.from('students').select('*');
+      if (error) console.error("Supabase Error:", error);
       return res.json(data || []);
     }
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error("Server Error:", e); }
   res.json([]);
 });
 
