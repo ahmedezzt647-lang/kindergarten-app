@@ -3,7 +3,6 @@ const path = require('path');
 const app = express();
 
 app.use(express.json());
-
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
@@ -12,26 +11,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// ذاكرة محلية نشطة ومستقرة داخل السيرفر
 let db = {
   students: [
     { id: '1', name: 'أحمد محمد', grade: 'تمهيدي', parent_phone: '0501234567', join_date: '2026-01-01', monthlyFee: '500', discount: '0', paid: '500' }
   ],
-  payments: [
-    { id: '1001', studentName: 'أحمد محمد', amount: '500', date: '2026-01-01' }
-  ],
-  expenses: [
-    { id: '1', title: 'إيجار المقر', amount: '2000', date: '2026-01-01' }
-  ],
+  payments: [{ id: '1001', studentName: 'أحمد محمد', amount: '500', date: '2026-01-01' }],
+  expenses: [{ id: '1', title: 'إيجار المقر', amount: '2000', date: '2026-01-01' }],
   attendance: [],
   books: []
 };
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-// الطلاب
 app.get('/api/students', (req, res) => res.json(db.students));
 app.post('/api/students', (req, res) => {
   const student = { id: Date.now().toString(), ...req.body };
@@ -46,7 +37,6 @@ app.delete('/api/students/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// المقبوضات
 app.get('/api/payments', (req, res) => res.json(db.payments));
 app.post('/api/students/pay', (req, res) => {
   const { id, amount, studentName } = req.body;
@@ -58,7 +48,6 @@ app.post('/api/students/pay', (req, res) => {
   res.json({ success: true });
 });
 
-// المصروفات
 app.get('/api/expenses', (req, res) => res.json(db.expenses));
 app.post('/api/expenses', (req, res) => {
   const exp = { id: Date.now().toString(), ...req.body };
@@ -70,7 +59,6 @@ app.delete('/api/expenses/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// الحضور
 app.get('/api/attendance', (req, res) => res.json(db.attendance));
 app.post('/api/attendance', (req, res) => {
   const { studentId, status } = req.body;
@@ -80,7 +68,6 @@ app.post('/api/attendance', (req, res) => {
   res.json({ success: true });
 });
 
-// الكتب
 app.get('/api/books', (req, res) => res.json(db.books));
 app.post('/api/books', (req, res) => {
   const book = { id: Date.now().toString(), ...req.body };
@@ -93,6 +80,4 @@ app.delete('/api/books/:id', (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
