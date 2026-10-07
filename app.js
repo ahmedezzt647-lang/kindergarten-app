@@ -31,8 +31,10 @@ app.get('/', (req, res) => {
       body { font-family: 'Tajawal', sans-serif; background-color: #f1f5f9; margin: 0; padding: 0; color: #1e293b; font-size: 15px; display: flex; min-height: 100vh; }
       .sidebar { width: 280px; background: #0f172a; color: #ffffff; padding: 24px 16px; flex-shrink: 0; display: flex; flex-direction: column; gap: 20px; }
       .sidebar-logo { text-align: center; padding-bottom: 16px; border-bottom: 1px solid #334155; }
-      .kids-avatars { display: flex; justify-content: center; gap: 12px; margin-bottom: 10px; }
-      .kids-avatars svg { width: 65px; height: 65px; border-radius: 50%; background: #ffffff; padding: 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+      
+      .kids-avatars { display: flex; justify-content: center; gap: 14px; margin-bottom: 12px; }
+      .kid-photo { width: 75px; height: 75px; border-radius: 50%; object-fit: cover; border: 3px solid #38bdf8; box-shadow: 0 4px 8px rgba(0,0,0,0.25); background: #ffffff; }
+      
       .sidebar-logo h2 { font-size: 20px; margin: 8px 0 0 0; color: #f8fafc; font-weight: 800; }
       .sidebar-menu { display: flex; flex-direction: column; gap: 8px; }
       .menu-btn { background: transparent; color: #cbd5e1; border: none; padding: 12px 16px; border-radius: 10px; font-size: 15px; font-weight: 600; font-family: inherit; text-align: right; cursor: pointer; transition: 0.2s; }
@@ -82,24 +84,11 @@ app.get('/', (req, res) => {
     <div class="sidebar">
       <div class="sidebar-logo">
         <div class="kids-avatars">
-          <!-- رسمة تعبيرية لطيفة للبنت الأولى (نور) -->
-          <svg viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="45" fill="#fbcfe8"/>
-            <circle cx="50" cy="45" r="22" fill="#fde047"/>
-            <path d="M 28 45 Q 50 15 72 45" fill="#3b82f6"/>
-            <circle cx="43" cy="43" r="3" fill="#1e293b"/>
-            <circle cx="57" cy="43" r="3" fill="#1e293b"/>
-            <path d="M 43 55 Q 50 62 57 55" stroke="#ef4444" stroke-width="2" fill="none"/>
-          </svg>
-          <!-- رسمة تعبيرية لطيفة للبنت الثانية (مكة) -->
-          <svg viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="45" fill="#fed7aa"/>
-            <circle cx="50" cy="45" r="22" fill="#fde047"/>
-            <path d="M 28 45 Q 50 15 72 45" fill="#ec4899"/>
-            <circle cx="43" cy="43" r="3" fill="#1e293b"/>
-            <circle cx="57" cy="43" r="3" fill="#1e293b"/>
-            <path d="M 43 55 Q 50 62 57 55" stroke="#ef4444" stroke-width="2" fill="none"/>
-          </svg>
+          <!-- غير رابط الصورة المباشر لنور هنا -->
+          <img src="https://via.placeholder.com/150/38bdf8/ffffff?text=نور" alt="نور" class="kid-photo">
+          
+          <!-- غير رابط الصورة المباشر لمكة هنا -->
+          <img src="https://via.placeholder.com/150/ec4899/ffffff?text=مكة" alt="مكة" class="kid-photo">
         </div>
         <h2>روضة نور ومكة</h2>
       </div>
@@ -336,13 +325,13 @@ app.get('/', (req, res) => {
   `);
 });
 
-// APIs المربوطة بالسحابة Supabase أو المؤقتة
+// APIs المربوطة بالسحابة Supabase
 app.get('/api/students', async (req, res) => {
   if (supabase) {
     const { data } = await supabase.from('students').select('*');
     return res.json(data || []);
   }
-  res.json(students);
+  res.json([]);
 });
 
 app.post('/api/students', async (req, res) => {
@@ -352,15 +341,12 @@ app.post('/api/students', async (req, res) => {
     if (parseFloat(req.body.paid) > 0) {
       await supabase.from('payments').insert([{ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: req.body.name, amount: parseFloat(req.body.paid), date: new Date().toISOString().split('T')[0] }]);
     }
-  } else {
-    students.push(student);
   }
   res.json(student);
 });
 
 app.delete('/api/students/:id', async (req, res) => {
   if (supabase) await supabase.from('students').delete().eq('id', req.params.id);
-  students = students.filter(s => s.id !== req.params.id);
   res.json({ success: true });
 });
 
@@ -369,7 +355,7 @@ app.get('/api/payments', async (req, res) => {
     const { data } = await supabase.from('payments').select('*');
     return res.json(data || []);
   }
-  res.json(paymentsHistory);
+  res.json([]);
 });
 
 app.post('/api/students/pay', async (req, res) => {
@@ -381,9 +367,6 @@ app.post('/api/students/pay', async (req, res) => {
       await supabase.from('students').update({ paid: newPaid }).eq('id', id);
       await supabase.from('payments').insert([{ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: studentName || data.name, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] }]);
     }
-  } else {
-    const student = students.find(s => s.id === id);
-    if (student) student.paid = (parseFloat(student.paid) || 0) + parseFloat(amount);
   }
   res.json({ success: true });
 });
@@ -393,19 +376,17 @@ app.get('/api/expenses', async (req, res) => {
     const { data } = await supabase.from('expenses').select('*');
     return res.json(data || []);
   }
-  res.json(expenses);
+  res.json([]);
 });
 
 app.post('/api/expenses', async (req, res) => {
   const expense = { id: Date.now().toString(), ...req.body };
   if (supabase) await supabase.from('expenses').insert([expense]);
-  else expenses.push(expense);
   res.json(expense);
 });
 
 app.delete('/api/expenses/:id', async (req, res) => {
   if (supabase) await supabase.from('expenses').delete().eq('id', req.params.id);
-  expenses = expenses.filter(e => e.id !== req.params.id);
   res.json({ success: true });
 });
 
@@ -414,7 +395,7 @@ app.get('/api/attendance', async (req, res) => {
     const { data } = await supabase.from('attendance').select('*');
     return res.json(data || []);
   }
-  res.json(attendance);
+  res.json([]);
 });
 
 app.post('/api/attendance', async (req, res) => {
@@ -424,9 +405,6 @@ app.post('/api/attendance', async (req, res) => {
   if (supabase) {
     await supabase.from('attendance').delete().eq('studentId', studentId).eq('date', today);
     await supabase.from('attendance').insert([{ studentId, status, date: today, time }]);
-  } else {
-    attendance = attendance.filter(a => !(a.studentId === studentId && a.date === today));
-    attendance.push({ studentId, status, date: today, time });
   }
   res.json({ success: true });
 });
@@ -436,19 +414,17 @@ app.get('/api/books', async (req, res) => {
     const { data } = await supabase.from('books').select('*');
     return res.json(data || []);
   }
-  res.json(bookSales);
+  res.json([]);
 });
 
 app.post('/api/books', async (req, res) => {
   const book = { id: Date.now().toString(), ...req.body };
   if (supabase) await supabase.from('books').insert([book]);
-  else bookSales.push(book);
   res.json(book);
 });
 
 app.delete('/api/books/:id', async (req, res) => {
   if (supabase) await supabase.from('books').delete().eq('id', req.params.id);
-  bookSales = bookSales.filter(b => b.id !== req.params.id);
   res.json({ success: true });
 });
 
