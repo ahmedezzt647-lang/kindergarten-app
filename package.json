@@ -1,13 +1,7 @@
 {
   "name": "kindergarten-app",
   "version": "1.0.0",
-  "description": "",
   "main": "app.js",
-  "scripts": {
-    "start": "node app.js"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.39.7",
-    "express": "^4.19.2"
-  }
+  "scripts": { "start": "node app.js" },
+  "dependencies": { "express": "^4.19.2" }
 }
