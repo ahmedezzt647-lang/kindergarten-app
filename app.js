@@ -12,7 +12,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// الاتصال بقاعدة البيانات السحابية Supabase مع إعدادات السيرفر الصحيحة
+// الاتصال بقاعدة البيانات السحابية Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
@@ -341,10 +341,12 @@ app.get('/', (req, res) => {
 
 // APIs للسحابة
 app.get('/api/students', async (req, res) => {
-  if (supabase) {
-    const { data } = await supabase.from('students').select('*');
-    return res.json(data || []);
-  }
+  try {
+    if (supabase) {
+      const { data } = await supabase.from('students').select('*');
+      return res.json(data || []);
+    }
+  } catch (e) { console.error(e); }
   res.json([]);
 });
 
@@ -360,65 +362,81 @@ app.post('/api/students', async (req, res) => {
     paid: req.body.paid
   };
   
-  if (supabase) {
-    await supabase.from('students').insert([student]);
-    if (parseFloat(req.body.paid) > 0) {
-      await supabase.from('payments').insert([{ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: req.body.name, amount: parseFloat(req.body.paid), date: new Date().toISOString().split('T')[0] }]);
+  try {
+    if (supabase) {
+      await supabase.from('students').insert([student]);
+      if (parseFloat(req.body.paid) > 0) {
+        await supabase.from('payments').insert([{ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: req.body.name, amount: parseFloat(req.body.paid), date: new Date().toISOString().split('T')[0] }]);
+      }
     }
-  }
+  } catch (e) { console.error(e); }
   res.json(student);
 });
 
 app.delete('/api/students/:id', async (req, res) => {
-  if (supabase) await supabase.from('students').delete().eq('id', req.params.id);
+  try {
+    if (supabase) await supabase.from('students').delete().eq('id', req.params.id);
+  } catch (e) { console.error(e); }
   res.json({ success: true });
 });
 
 app.get('/api/payments', async (req, res) => {
-  if (supabase) {
-    const { data } = await supabase.from('payments').select('*');
-    return res.json(data || []);
-  }
+  try {
+    if (supabase) {
+      const { data } = await supabase.from('payments').select('*');
+      return res.json(data || []);
+    }
+  } catch (e) { console.error(e); }
   res.json([]);
 });
 
 app.post('/api/students/pay', async (req, res) => {
   const { id, amount, studentName } = req.body;
-  if (supabase) {
-    const { data } = await supabase.from('students').select('*').eq('id', id).single();
-    if (data) {
-      const newPaid = (parseFloat(data.paid) || 0) + parseFloat(amount);
-      await supabase.from('students').update({ paid: newPaid }).eq('id', id);
-      await supabase.from('payments').insert([{ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: studentName || data.name, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] }]);
+  try {
+    if (supabase) {
+      const { data } = await supabase.from('students').select('*').eq('id', id).single();
+      if (data) {
+        const newPaid = (parseFloat(data.paid) || 0) + parseFloat(amount);
+        await supabase.from('students').update({ paid: newPaid }).eq('id', id);
+        await supabase.from('payments').insert([{ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: studentName || data.name, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] }]);
+      }
     }
-  }
+  } catch (e) { console.error(e); }
   res.json({ success: true });
 });
 
 app.get('/api/expenses', async (req, res) => {
-  if (supabase) {
-    const { data } = await supabase.from('expenses').select('*');
-    return res.json(data || []);
-  }
+  try {
+    if (supabase) {
+      const { data } = await supabase.from('expenses').select('*');
+      return res.json(data || []);
+    }
+  } catch (e) { console.error(e); }
   res.json([]);
 });
 
 app.post('/api/expenses', async (req, res) => {
   const expense = { id: Date.now().toString(), ...req.body };
-  if (supabase) await supabase.from('expenses').insert([expense]);
+  try {
+    if (supabase) await supabase.from('expenses').insert([expense]);
+  } catch (e) { console.error(e); }
   res.json(expense);
 });
 
 app.delete('/api/expenses/:id', async (req, res) => {
-  if (supabase) await supabase.from('expenses').delete().eq('id', req.params.id);
+  try {
+    if (supabase) await supabase.from('expenses').delete().eq('id', req.params.id);
+  } catch (e) { console.error(e); }
   res.json({ success: true });
 });
 
 app.get('/api/attendance', async (req, res) => {
-  if (supabase) {
-    const { data } = await supabase.from('attendance').select('*');
-    return res.json(data || []);
-  }
+  try {
+    if (supabase) {
+      const { data } = await supabase.from('attendance').select('*');
+      return res.json(data || []);
+    }
+  } catch (e) { console.error(e); }
   res.json([]);
 });
 
@@ -426,31 +444,41 @@ app.post('/api/attendance', async (req, res) => {
   const { studentId, status } = req.body;
   const today = new Date().toISOString().split('T')[0];
   const time = new Date().toLocaleTimeString('ar-EG');
-  if (supabase) {
-    await supabase.from('attendance').delete().eq('studentId', studentId).eq('date', today);
-    await supabase.from('attendance').insert([{ studentId, status, date: today, time }]);
-  }
+  try {
+    if (supabase) {
+      await supabase.from('attendance').delete().eq('studentId', studentId).eq('date', today);
+      await supabase.from('attendance').insert([{ studentId, status, date: today, time }]);
+    }
+  } catch (e) { console.error(e); }
   res.json({ success: true });
 });
 
 app.get('/api/books', async (req, res) => {
-  if (supabase) {
-    const { data } = await supabase.from('books').select('*');
-    return res.json(data || []);
-  }
+  try {
+    if (supabase) {
+      const { data } = await supabase.from('books').select('*');
+      return res.json(data || []);
+    }
+  } catch (e) { console.error(e); }
   res.json([]);
 });
 
 app.post('/api/books', async (req, res) => {
   const book = { id: Date.now().toString(), ...req.body };
-  if (supabase) await supabase.from('books').insert([book]);
+  try {
+    if (supabase) await supabase.from('books').insert([book]);
+  } catch (e) { console.error(e); }
   res.json(book);
 });
 
 app.delete('/api/books/:id', async (req, res) => {
-  if (supabase) await supabase.from('books').delete().eq('id', req.params.id);
+  try {
+    if (supabase) await supabase.from('books').delete().eq('id', req.params.id);
+  } catch (e) { console.error(e); }
   res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
