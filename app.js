@@ -17,24 +17,31 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } }) : null;
 
-// بيانات افتراضية تظهر فقط في حال كان السحابي فارغاً لكي لاختفي شيء
-const defaultStudents = [
-  { id: '1', name: 'أحمد محمد', grade: 'تمهيدي', parent_phone: '0501234567', join_date: '2026-01-01', monthlyFee: '500', discount: '0', paid: '500' }
-];
-
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// الطلاب
+// توحيد وتنظيف أسماء حقول الطلاب لكي تظهر دائماً وبشكل صحيح
 app.get('/api/students', async (req, res) => {
   try {
     if (supabase) {
       const { data, error } = await supabase.from('students').select('*');
-      if (!error && data && data.length > 0) return res.json(data);
+      if (!error && data) {
+        const cleaned = data.map(s => ({
+          id: s.id || String(Math.random()),
+          name: s.name || s.studentName || 'بدون اسم',
+          grade: s.grade || s.className || 'تمهيدي',
+          parent_phone: s.parent_phone || s.phone || '',
+          join_date: s.join_date || s.joinDate || new Date().toISOString().split('T')[0],
+          monthlyFee: s.monthlyFee || s.fee || '0',
+          discount: s.discount || '0',
+          paid: s.paid || '0'
+        }));
+        return res.json(cleaned);
+      }
     }
   } catch (e) {}
-  res.json(defaultStudents);
+  res.json([]);
 });
 
 app.post('/api/students', async (req, res) => {
@@ -71,7 +78,6 @@ app.delete('/api/students/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-// المقبوضات
 app.get('/api/payments', async (req, res) => {
   try {
     if (supabase) {
@@ -102,7 +108,6 @@ app.post('/api/students/pay', async (req, res) => {
   res.json({ success: true });
 });
 
-// المصروفات
 app.get('/api/expenses', async (req, res) => {
   try {
     if (supabase) {
@@ -128,7 +133,6 @@ app.delete('/api/expenses/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-// الحضور
 app.get('/api/attendance', async (req, res) => {
   try {
     if (supabase) {
@@ -152,7 +156,6 @@ app.post('/api/attendance', async (req, res) => {
   res.json({ success: true });
 });
 
-// الكتب
 app.get('/api/books', async (req, res) => {
   try {
     if (supabase) {
