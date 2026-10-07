@@ -105,4 +105,245 @@ app.get('/', (req, res) => {
           <div class="card orange" onclick="showBox('books-details-box')"><h3>مبيعات الكتب 🔍</h3><div class="number" id="total-books-sales">0 ر.س</div><div class="hint">الكتب الآجلة</div></div>
           <div class="card green" onclick="showBox('revenue-details-box')"><h3>المقبوضات 🔍</h3><div class="number" id="total-revenue">0 ر.س</div><div class="hint">سجل التحصيل</div></div>
           <div class="card red" onclick="showBox('expense-details-box')"><h3>المصروفات 🔍</h3><div class="number" id="total-expenses">0 ر.س</div><div class="hint">سجل النفقات</div></div>
-          <div class="card purple" onclick="showBox('profit-details-box')"><h3>صافي الربح 🔍</h3><div class="number"
+          <div class="card purple" onclick="showBox('profit-details-box')"><h3>صافي الربح 🔍</h3><div class="number" id="net-profit">0 ر.س</div><div class="hint">التقرير المالي</div></div>
+        </div>
+
+        <div id="books-details-box" class="details-box"><div class="section-title orange"><span>📚 سجل مبيعات الكتب</span><button class="btn-toggle" onclick="hideBox('books-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>#</th><th>اسم الطالب</th><th>الكتاب</th><th>السعر</th><th>التاريخ</th><th>حذف</th></tr></thead><tbody id="books-table"></tbody></table></div></div>
+        <div id="classes-details-box" class="details-box"><div class="section-title teal"><span>🏫 تحليل إيرادات الصفوف</span><button class="btn-toggle" onclick="hideBox('classes-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>اسم الصف</th><th>عدد الطلاب</th><th>المستحق</th><th>المقبوض</th><th>المتبقي</th></tr></thead><tbody id="classes-table"></tbody></table></div></div>
+        <div id="attendance-details-box" class="details-box"><div class="section-title"><span>📅 سجل الحضور والغياب اليومي</span><button class="btn-toggle" onclick="hideBox('attendance-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>اسم الطفل</th><th>الصف</th><th>حالة الحضور</th><th>وقت التسجيل</th><th>تسجيل</th></tr></thead><tbody id="attendance-table"></tbody></table></div></div>
+        <div id="students-details-box" class="details-box"><div class="section-title"><span>👶 قائمة الطلاب</span><button class="btn-toggle" onclick="hideBox('students-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الصف</th><th>الهاتف</th><th>تاريخ الالتحاق</th><th>الأشهر</th><th>تفصيل الرسوم</th><th>المستحق الكلي</th><th>المدفوع</th><th>المتبقي</th><th>إجراءات</th></tr></thead><tbody id="students-table-detail"></tbody></table></div></div>
+        <div id="revenue-details-box" class="details-box"><div class="section-title green"><span>💰 سجل المقبوضات الإيرادات</span><button class="btn-toggle" onclick="hideBox('revenue-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>#</th><th>رقم الإيصال</th><th>اسم الطالب</th><th>المبلغ</th><th>التاريخ</th><th>طباعة</th></tr></thead><tbody id="revenue-table"></tbody></table></div></div>
+        <div id="expense-details-box" class="details-box"><div class="section-title red"><span>📋 البيان التفصيلي للمصروفات</span><button class="btn-toggle" onclick="hideBox('expense-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>#</th><th>البند</th><th>المبلغ</th><th>التاريخ</th><th>حذف</th></tr></thead><tbody id="expenses-table"></tbody></table></div></div>
+
+        <div id="profit-details-box" class="details-box">
+          <div class="section-title"><span>📊 التقرير المالي</span><button class="btn-toggle" onclick="hideBox('profit-details-box')">إغلاق ✖</button></div>
+          <div style="display:flex; justify-content:space-around; background:#f8fafc; padding:22px; border-radius:14px; border:1px solid #e2e8f0;">
+            <div><h4>المقبوضات</h4><p style="color:#059669; font-weight:800; font-size:24px; margin:0;" id="rep-rev">0 ر.س</p></div>
+            <div><h4>المصروفات</h4><p style="color:#dc2626; font-weight:800; font-size:24px; margin:0;" id="rep-exp">0 ر.س</p></div>
+            <div><h4>صافي الأرباح</h4><p style="color:#8b5cf6; font-weight:800; font-size:24px; margin:0;" id="rep-net">0 ر.س</p></div>
+          </div>
+        </div>
+
+        <div id="sec-add-student" class="section-title green"><span>👶 إضافة طالب جديد</span></div>
+        <div class="form-group">
+          <input type="text" id="std-name" placeholder="اسم الطفل ثلاثي">
+          <input type="text" id="std-class" placeholder="الصف (تمهيدي، روضة 1)">
+          <input type="text" id="std-phone" placeholder="رقم هاتف الولي">
+          <input type="date" id="std-join-date">
+          <input type="number" id="std-monthly-fee" placeholder="الرسم الشهري">
+          <input type="number" id="std-discount" placeholder="خصم شهري (إن وجد)">
+          <input type="number" id="std-paid" placeholder="الدفعة الأولى">
+          <button class="btn-success" onclick="addStudent()">تسجيل الطالب</button>
+        </div>
+
+        <div id="sec-add-book" class="section-title orange"><span>📚 بيع / إضافة كتاب لطالب</span></div>
+        <div class="form-group">
+          <select id="book-student-select"><option value="">اختر الطالب...</option></select>
+          <input type="text" id="book-title" placeholder="اسم الكتاب">
+          <input type="number" id="book-price" placeholder="سعر الكتاب">
+          <button class="btn-orange" onclick="addBookToStudent()">📖 إضافة الكتاب</button>
+        </div>
+
+        <div id="sec-add-expense" class="section-title red"><span>💸 تسجيل مصروف جديد</span></div>
+        <div class="form-group">
+          <input type="text" id="exp-title" placeholder="بند المصروف (إيجار، رواتب)">
+          <input type="number" id="exp-amount" placeholder="المبلغ">
+          <input type="date" id="exp-date">
+          <button class="btn-expense" onclick="addExpense()">إضافة المصروف</button>
+        </div>
+
+        <div id="sec-classes" class="section-title teal"><span>📊 إحصائيات وصفوف الروضة</span></div>
+        <div class="table-responsive"><table><thead><tr><th>اسم الصف</th><th>عدد الطلاب</th><th>المستحق</th><th>المقبوض</th><th>المتبقي</th></tr></thead><tbody id="classes-table-main"></tbody></table></div>
+
+        <div id="sec-students-list" class="section-title"><span>📜 جدول الطلاب الرئيسي</span></div>
+        <div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الصف</th><th>الهاتف</th><th>تاريخ الالتحاق</th><th>الأشهر</th><th>تفصيل الرسوم والكتب</th><th>المستحق الكلي</th><th>المدفوع</th><th>المتبقي</th><th>حضور اليوم</th><th>إجراءات</th></tr></thead><tbody id="students-table-main"></tbody></table></div>
+
+        <div id="receipt-print-area" class="print-receipt">
+          <h2 style="text-align:center;">إيصال استلام نقدية - روضة نور ومكة</h2>
+          <hr><p><strong>رقم الإيصال:</strong> <span id="rec-id"></span></p><p><strong>التاريخ:</strong> <span id="rec-date"></span></p><p><strong>اسم الطالب:</strong> <span id="rec-name"></span></p><p style="color:#059669;"><strong>المبلغ:</strong> <span id="rec-amount"></span> ر.س</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.getElementById('exp-date').valueAsDate = new Date();
+      document.getElementById('std-join-date').valueAsDate = new Date();
+
+      let allExpenses = JSON.parse(localStorage.getItem('expenses') || '[]');
+      let allStudents = JSON.parse(localStorage.getItem('students') || '[]');
+      let allPayments = JSON.parse(localStorage.getItem('payments') || '[]');
+      let allAttendance = JSON.parse(localStorage.getItem('attendance') || '[]');
+      let allBookSales = JSON.parse(localStorage.getItem('bookSales') || '[]');
+
+      function saveData() {
+        localStorage.setItem('expenses', JSON.stringify(allExpenses));
+        localStorage.setItem('students', JSON.stringify(allStudents));
+        localStorage.setItem('payments', JSON.stringify(allPayments));
+        localStorage.setItem('attendance', JSON.stringify(allAttendance));
+        localStorage.setItem('bookSales', JSON.stringify(allBookSales));
+      }
+
+      function scrollToSection(secId) { document.getElementById(secId).scrollIntoView({ behavior: 'smooth' }); }
+      function calculateMonths(joinDateStr) { const joinDate = new Date(joinDateStr); const now = new Date(); let months = (now.getFullYear() - joinDate.getFullYear()) * 12 + (now.getMonth() - joinDate.getMonth()) + 1; return months > 0 ? months : 1; }
+      function showBox(boxId) { document.querySelectorAll('.details-box').forEach(box => box.classList.remove('active')); const targetBox = document.getElementById(boxId); targetBox.classList.add('active'); targetBox.scrollIntoView({ behavior: 'smooth' }); }
+      function hideBox(boxId) { document.getElementById(boxId).classList.remove('active'); }
+
+      function refreshUI() {
+        renderExpenses(allExpenses);
+        renderStudents(allStudents);
+        renderRevenue(allPayments);
+        renderClasses(allStudents);
+        renderAttendance(allStudents, allAttendance);
+        renderBookSales(allBookSales);
+        populateStudentSelect(allStudents);
+        updateStats(allExpenses, allStudents, allPayments, allBookSales);
+      }
+
+      function populateStudentSelect(students) {
+        document.getElementById('book-student-select').innerHTML = '<option value="">اختر الطالب...</option>' + students.map(s => \`<option value="\${s.id}">\${s.name} - (\${s.className || 'بدون صف'})\</option>\`).join('');
+      }
+
+      function getStudentBooksTotal(studentId) { return allBookSales.filter(b => b.studentId === studentId).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0); }
+
+      function renderBookSales(books) {
+        document.getElementById('books-table').innerHTML = books.length === 0 ? '<tr><td colspan="6">لا توجد مبيعات كتب حتى الآن</td></tr>' : books.map((b, i) => \`<tr><td>\${i+1}</td><td><b>\${b.studentName}</b></td><td>\${b.title}</td><td style="color:#d97706; font-weight:bold;">\${b.price} ر.س</td><td>\${b.date}</td><td><button class="btn-delete" onclick="deleteBookSale('\${b.id}')">حذف</button></td></tr>\`).join('');
+      }
+
+      function renderClasses(students) {
+        const classesMap = {};
+        students.forEach(s => {
+          const className = (s.className && s.className.trim()) ? s.className.trim() : 'غير محدد';
+          const months = calculateMonths(s.joinDate || new Date());
+          const due = (((parseFloat(s.monthlyFee) || 0) - (parseFloat(s.discount) || 0)) * months) + getStudentBooksTotal(s.id);
+          const paid = parseFloat(s.paid) || 0;
+          if (!classesMap[className]) classesMap[className] = { count: 0, totalDue: 0, totalPaid: 0 };
+          classesMap[className].count++; classesMap[className].totalDue += due; classesMap[className].totalPaid += paid;
+        });
+        const keys = Object.keys(classesMap);
+        if (keys.length === 0) {
+          document.getElementById('classes-table').innerHTML = '<tr><td colspan="5">لا توجد صفوف</td></tr>'; document.getElementById('classes-table-main').innerHTML = '<tr><td colspan="5">لا توجد صفوف</td></tr>'; return;
+        }
+        document.getElementById('total-classes').innerText = keys.length;
+        const rows = keys.map(cName => {
+          const item = classesMap[cName];
+          return \`<tr><td><b>\${cName}</b></td><td>\${item.count} طفل</td><td>\${item.totalDue} ر.س</td><td style="color:#059669; font-weight:bold;">\${item.totalPaid} ر.س</td><td style="color:#dc2626; font-weight:bold;">\${item.totalDue - item.totalPaid} ر.س</td></tr>\`;
+        }).join('');
+        document.getElementById('classes-table').innerHTML = rows; document.getElementById('classes-table-main').innerHTML = rows;
+      }
+
+      function renderExpenses(data) {
+        document.getElementById('expenses-table').innerHTML = data.length === 0 ? '<tr><td colspan="5">لا توجد مصروفات</td></tr>' : data.map((e, i) => \`<tr><td>\${i+1}</td><td><b>\${e.title}</b></td><td style="color:#dc2626; font-weight:bold;">\${e.amount} ر.س</td><td>\${e.date || '-'}</td><td><button class="btn-delete" onclick="deleteExpense('\${e.id}')">حذف</button></td></tr>\`).join('');
+      }
+
+      function renderRevenue(payments) {
+        document.getElementById('revenue-table').innerHTML = payments.length === 0 ? '<tr><td colspan="6">لا توجد عمليات دفع</td></tr>' : payments.map((p, i) => \`<tr><td>\${i+1}</td><td><b>#\${p.id || i + 1001}</b></td><td>\${p.studentName}</td><td style="color:#059669; font-weight:bold;">\${p.amount} ر.س</td><td>\${p.date}</td><td><button class="btn-pay" onclick="printReceipt('\${p.id || i + 1001}', '\${p.studentName}', '\${p.amount}', '\${p.date}')">🖨️ طباعة</button></td></tr>\`).join('');
+      }
+
+      function renderAttendance(students, attendance) {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('attendance-table').innerHTML = students.map(s => {
+          const rec = attendance.find(a => a.studentId === s.id && a.date === today);
+          return \`<tr><td>\${s.name}</td><td>\${s.className}</td><td><b>\${rec ? (rec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'لم يسجل'}</b></td><td>\${rec ? rec.time : '-'}</td><td><button class="btn-pay" onclick="markAttendance('\${s.id}', 'present')">حاضر</button> <button class="btn-absent" onclick="markAttendance('\${s.id}', 'absent')">غائب</button></td></tr>\`;
+        }).join('');
+      }
+
+      function renderStudents(data) {
+        const today = new Date().toISOString().split('T')[0];
+        const rows = data.map(s => {
+          const months = calculateMonths(s.joinDate || new Date());
+          const monthlyFee = parseFloat(s.monthlyFee) || 0;
+          const booksTotal = getStudentBooksTotal(s.id);
+          const totalDue = ((monthlyFee - (parseFloat(s.discount) || 0)) * months) + booksTotal;
+          const paid = parseFloat(s.paid) || 0;
+          const remaining = totalDue - paid;
+          const attRec = allAttendance.find(a => a.studentId === s.id && a.date === today);
+          return \`<tr>
+            <td><b>\${s.name}</b></td><td>\${s.className}</td><td><a href="tel:\${s.phone}" style="color:#3b82f6; text-decoration:none;">\${s.phone}</a></td><td>\${s.joinDate || '-'}</td><td>\${months} شهر</td>
+            <td><span>\${monthlyFee} ر.س</span><span class="fee-breakdown">📚 كتب: <b>\${booksTotal} ر.س</b></span></td>
+            <td><b>\${totalDue} ر.س</b></td><td>\${paid} ر.س</td><td><span class="\${remaining > 0 ? 'badge-danger' : 'badge-success'}">\${remaining} ر.س</span></td>
+            <td>\${attRec ? (attRec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'غير مسجل'}</td>
+            <td><button class="btn-pay" onclick="payExtra('\${s.id}', '\${s.name}')">+ دفعة</button> <button class="btn-delete" onclick="deleteStudent('\${s.id}')">حذف</button></td>
+          </tr>\`;
+        }).join('');
+        document.getElementById('students-table-main').innerHTML = rows; document.getElementById('students-table-detail').innerHTML = rows;
+      }
+
+      function updateStats(expenses, students, payments, books) {
+        document.getElementById('total-students').innerText = students.length;
+        const totalExp = expenses.reduce((acc, c) => acc + Number(c.amount || 0), 0);
+        const totalRev = payments.reduce((acc, c) => acc + Number(c.amount || 0), 0);
+        const totalBooksSales = books.reduce((acc, c) => acc + Number(c.price || 0), 0);
+        document.getElementById('total-expenses').innerText = totalExp + ' ر.س';
+        document.getElementById('total-revenue').innerText = totalRev + ' ر.س';
+        document.getElementById('total-books-sales').innerText = totalBooksSales + ' ر.س';
+        document.getElementById('net-profit').innerText = (totalRev - totalExp) + ' ر.س';
+        document.getElementById('rep-rev').innerText = totalRev + ' ر.س';
+        document.getElementById('rep-exp').innerText = totalExp + ' ر.س';
+        document.getElementById('rep-net').innerText = (totalRev - totalExp) + ' ر.س';
+      }
+
+      function addBookToStudent() {
+        const studentId = document.getElementById('book-student-select').value;
+        const title = document.getElementById('book-title').value;
+        const price = document.getElementById('book-price').value;
+        if(!studentId || !title || !price) return alert('يرجى اختيار الطالب، وإدخال اسم الكتاب وسعره');
+        const student = allStudents.find(s => s.id === studentId);
+        allBookSales.push({ id: Date.now().toString(), studentId, studentName: student ? student.name : '', title, price, date: new Date().toISOString().split('T')[0] });
+        saveData(); document.getElementById('book-title').value = ''; document.getElementById('book-price').value = ''; refreshUI(); showBox('books-details-box');
+      }
+
+      function addExpense() {
+        const title = document.getElementById('exp-title').value; const amount = document.getElementById('exp-amount').value; const date = document.getElementById('exp-date').value;
+        if(!title || !amount) return alert('يرجى كتابة البند والمبلغ');
+        allExpenses.push({ id: Date.now().toString(), title, amount, date });
+        saveData(); document.getElementById('exp-title').value = ''; document.getElementById('exp-amount').value = ''; refreshUI();
+      }
+
+      function addStudent() {
+        const name = document.getElementById('std-name').value; const className = document.getElementById('std-class').value; const phone = document.getElementById('std-phone').value; const joinDate = document.getElementById('std-join-date').value; const monthlyFee = document.getElementById('std-monthly-fee').value; const discount = document.getElementById('std-discount').value; const paid = document.getElementById('std-paid').value;
+        if(!name || !monthlyFee) return alert('يرجى كتابة اسم الطفل والرسم الشهري');
+        const newStudent = { id: Date.now().toString(), name, className, phone, joinDate, monthlyFee, discount: discount || 0, paid: paid || 0 };
+        allStudents.push(newStudent);
+        if (parseFloat(paid) > 0) {
+          allPayments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: name, amount: parseFloat(paid), date: new Date().toISOString().split('T')[0] });
+        }
+        saveData();
+        document.getElementById('std-name').value = ''; document.getElementById('std-class').value = ''; document.getElementById('std-phone').value = ''; document.getElementById('std-monthly-fee').value = ''; document.getElementById('std-discount').value = ''; document.getElementById('std-paid').value = '';
+        refreshUI();
+      }
+
+      function payExtra(id, studentName) {
+        const amount = prompt('أدخل مبلغ الدفعة الجديدة (ر.س):'); if(!amount || isNaN(amount)) return;
+        const student = allStudents.find(s => s.id === id);
+        if (student) {
+          student.paid = (parseFloat(student.paid) || 0) + parseFloat(amount);
+          allPayments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] });
+          saveData(); refreshUI();
+        }
+      }
+
+      function markAttendance(studentId, status) {
+        const today = new Date().toISOString().split('T')[0];
+        const time = new Date().toLocaleTimeString('ar-EG');
+        allAttendance = allAttendance.filter(a => !(a.studentId === studentId && a.date === today));
+        allAttendance.push({ studentId, status, date: today, time });
+        saveData(); refreshUI();
+      }
+
+      function deleteStudent(id) { if(!confirm('حذف هذا الطالب؟')) return; allStudents = allStudents.filter(s => s.id !== id); saveData(); refreshUI(); }
+      function deleteExpense(id) { if(!confirm('حذف هذا المصروف؟')) return; allExpenses = allExpenses.filter(e => e.id !== id); saveData(); refreshUI(); }
+      function deleteBookSale(id) { if(!confirm('إلغاء شراء هذا الكتاب؟')) return; allBookSales = allBookSales.filter(b => b.id !== id); saveData(); refreshUI(); }
+
+      function printReceipt(id, name, amount, date) {
+        document.getElementById('rec-id').innerText = id; document.getElementById('rec-name').innerText = name; document.getElementById('rec-amount').innerText = amount; document.getElementById('rec-date').innerText = date; window.print();
+      }
+
+      refreshUI();
+    </script>
+  </body>
+  </html>
+  `);
+});
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
