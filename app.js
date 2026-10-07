@@ -11,11 +11,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// مصفوفات حفظ البيانات محلياً
 let students = [];
 let expenses = [];
 
-// عرض واجهة نظام الروضة مباشرة
 app.get('/', (req, res) => {
   res.send(`
   <!DOCTYPE html>
@@ -25,7 +23,7 @@ app.get('/', (req, res) => {
     <title>نظام إدارة ومحاسبة الروضة</title>
     <style>
       body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }
-      .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+      .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
       h1 { text-align: center; color: #2c3e50; }
       .stats-cards { display: flex; gap: 10px; margin-bottom: 25px; }
       .card { flex: 1; padding: 15px; background: #f8f9fa; border-radius: 6px; text-align: center; border: 1px solid #ddd; }
@@ -34,13 +32,16 @@ app.get('/', (req, res) => {
       .section-title { font-size: 18px; margin: 20px 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #27ae60; color: #27ae60; }
       .form-group { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
       input, select, button { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-      input { flex: 1; min-width: 150px; }
+      input { flex: 1; min-width: 130px; }
       button { background: #27ae60; color: white; border: none; cursor: pointer; font-weight: bold; }
       button.btn-expense { background: #e74c3c; }
+      button.btn-pay { background: #2980b9; padding: 5px 10px; font-size: 12px; }
       button:hover { opacity: 0.9; }
       table { width: 100%; border-collapse: collapse; margin-top: 10px; }
       th, td { border: 1px solid #ddd; padding: 10px; text-align: center; font-size: 14px; }
       th { background-color: #f2f2f2; }
+      .badge-danger { color: #e74c3c; font-weight: bold; }
+      .badge-success { color: #27ae60; font-weight: bold; }
     </style>
   </head>
   <body>
@@ -66,23 +67,45 @@ app.get('/', (req, res) => {
         <tbody id="expenses-table"></tbody>
       </table>
 
-      <div class="section-title">👶 إدارة إيرادات الأطفال والرسوم</div>
+      <div class="section-title">👶 إدارة إيرادات الأطفال والرسوم الشهريّة</div>
       <div class="form-group">
         <input type="text" id="std-name" placeholder="اسم الطفل">
         <input type="text" id="std-class" placeholder="الصف / المستوى">
         <input type="text" id="std-phone" placeholder="رقم هاتف ولي الأمر">
-        <input type="number" id="std-total" placeholder="الرسوم الإجمالية">
+        <input type="date" id="std-join-date" title="تاريخ الالتحاق">
+        <input type="number" id="std-monthly-fee" placeholder="الرسم الشهري">
         <input type="number" id="std-paid" placeholder="المبلغ المدفوع">
         <button onclick="addStudent()">إضافة طالب</button>
       </div>
       <table>
-        <thead><tr><th>الاسم</th><th>الصف</th><th>رقم الولي</th><th>الرسوم</th><th>المدفوع</th><th>المتبقي</th></tr></thead>
+        <thead>
+          <tr>
+            <th>الاسم</th>
+            <th>الصف</th>
+            <th>رقم الولي</th>
+            <th>تاريخ الالتحاق</th>
+            <th>الأشهر المنقضية</th>
+            <th>الرسم الشهري</th>
+            <th>إجمالي المستحق</th>
+            <th>المدفوع</th>
+            <th>المتبقي</th>
+            <th>إجراءات</th>
+          </tr>
+        </thead>
         <tbody id="students-table"></tbody>
       </table>
     </div>
 
     <script>
       document.getElementById('exp-date').valueAsDate = new Date();
+      document.getElementById('std-join-date').valueAsDate = new Date();
+
+      function calculateMonths(joinDateStr) {
+        const joinDate = new Date(joinDateStr);
+        const now = new Date();
+        let months = (now.getFullYear() - joinDate.getFullYear()) * 12 + (now.getMonth() - joinDate.getMonth()) + 1;
+        return months > 0 ? months : 1;
+      }
 
       async function fetchData() {
         const resExp = await fetch('/api/expenses');
@@ -103,8 +126,24 @@ app.get('/', (req, res) => {
       function renderStudents(data) {
         const tbody = document.getElementById('students-table');
         tbody.innerHTML = data.map(s => {
-          const remaining = (s.total || 0) - (s.paid || 0);
-          return \`<tr><td>\${s.name}</td><td>\${s.className}</td><td>\${s.phone}</td><td>\${s.total}</td><td>\${s.paid}</td><td>\${remaining}</td></tr>\`;
+          const months = calculateMonths(s.joinDate || new Date());
+          const totalDue = (parseFloat(s.monthlyFee) || 0) * months;
+          const paid = parseFloat(s.paid) || 0;
+          const remaining = totalDue - paid;
+          const remainingClass = remaining > 0 ? 'badge-danger' : 'badge-success';
+
+          return \`<tr>
+            <td>\${s.name}</td>
+            <td>\${s.className}</td>
+            <td>\${s.phone}</td>
+            <td>\${s.joinDate || '-'}</td>
+            <td>\${months} شهر</td>
+            <td>\${s.monthlyFee} ر.س</td>
+            <td>\${totalDue} ر.س</td>
+            <td>\${paid} ر.س</td>
+            <td class="\${remainingClass}">\${remaining} ر.س</td>
+            <td><button class="btn-pay" onclick="payExtra('\${s.id}')">+ إضافة دفعة</button></td>
+          </tr>\`;
         }).join('');
       }
 
@@ -137,16 +176,31 @@ app.get('/', (req, res) => {
         const name = document.getElementById('std-name').value;
         const className = document.getElementById('std-class').value;
         const phone = document.getElementById('std-phone').value;
-        const total = document.getElementById('std-total').value;
+        const joinDate = document.getElementById('std-join-date').value;
+        const monthlyFee = document.getElementById('std-monthly-fee').value;
         const paid = document.getElementById('std-paid').value;
-        if(!name) return alert('يرجى كتابة اسم الطفل');
+        if(!name || !monthlyFee) return alert('يرجى كتابة اسم الطفل والرسم الشهري');
 
         await fetch('/api/students', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ name, className, phone, total, paid })
+          body: JSON.stringify({ name, className, phone, joinDate, monthlyFee, paid })
         });
         document.getElementById('std-name').value = '';
+        document.getElementById('std-monthly-fee').value = '';
+        document.getElementById('std-paid').value = '';
+        fetchData();
+      }
+
+      async function payExtra(id) {
+        const amount = prompt('أدخل مبلغ الدفعة الجديدة (ر.س):');
+        if(!amount || isNaN(amount)) return;
+
+        await fetch('/api/students/pay', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ id, amount })
+        });
         fetchData();
       }
 
@@ -157,12 +211,22 @@ app.get('/', (req, res) => {
   `);
 });
 
-// API البيانات
 app.get('/api/students', (req, res) => res.json(students));
 app.post('/api/students', (req, res) => {
   const student = { id: Date.now().toString(), ...req.body };
   students.push(student);
   res.json(student);
+});
+
+app.post('/api/students/pay', (req, res) => {
+  const { id, amount } = req.body;
+  const student = students.find(s => s.id === id);
+  if (student) {
+    student.paid = (parseFloat(student.paid) || 0) + parseFloat(amount);
+    res.json(student);
+  } else {
+    res.status(404).json({ error: 'الطالب غير موجود' });
+  }
 });
 
 app.get('/api/expenses', (req, res) => res.json(expenses));
