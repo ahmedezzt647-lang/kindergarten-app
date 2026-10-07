@@ -1,7 +1,8 @@
 const express = require('express');
+const path = require('path');
 const app = express();
 
-// تفعيل استقبال JSON وحل مشكلة CORS يدوياً بدون مكتبات إضافية
+// تفعيل استقبال البيانات والتعامل مع CORS
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -14,13 +15,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// مصفوفات لحفظ البيانات محلياً
+// عرض ملفات الواجهة المباشرة (مثل index.html و CSS و JS)
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
+
+// مصفوفات البيانات محلياً
 let students = [];
 let expenses = [];
 
-// اختبار تشغيل السيرفر
+// فتح صفحة الواجهة المباشرة عند دخول الرابط الرئيسية
 app.get('/', (req, res) => {
-  res.send('Server is running successfully!');
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // --- API الطلاب ---
