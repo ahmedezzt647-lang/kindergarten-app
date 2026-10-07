@@ -1,6 +1,6 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
+const Database = require('better-sqlite3');
 const app = express();
 
 app.use(express.json());
@@ -13,30 +13,63 @@ app.use((req, res, next) => {
   next();
 });
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+// إنشاء قاعدة بيانات محلية دائمة ومستقرة على ملف داخل السيرفر
+const db = new Database('database.sqlite');
+
+// إنشـاء الجداول تلقائياً إذا لم تكن موجودة
+db.exec(`
+  CREATE TABLE IF NOT EXISTS students (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    grade TEXT,
+    parent_phone TEXT,
+    join_date TEXT,
+    monthlyFee TEXT,
+    discount TEXT,
+    paid TEXT
+  );
+  CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY,
+    studentName TEXT,
+    amount TEXT,
+    date TEXT
+  );
+  CREATE TABLE IF NOT EXISTS expenses (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    amount TEXT,
+    date TEXT
+  );
+  CREATE TABLE IF NOT EXISTS attendance (
+    studentId TEXT,
+    status TEXT,
+    date TEXT,
+    time TEXT
+  );
+  CREATE TABLE IF NOT EXISTS books (
+    id TEXT PRIMARY KEY,
+    studentId TEXT,
+    studentName TEXT,
+    title TEXT,
+    price TEXT,
+    date TEXT
+  );
+`);
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.get('/api/students', async (req, res) => {
-  try {
-    if (supabase) {
-      const { data, error } = await supabase.from('students').select('*');
-      if (!error) return res.json(data || []);
-    }
-  } catch (e) {
-    console.error("Fetch Error:", e);
-  }
-  res.json([]);
+// --- الطلاب ---
+app.get('/api/students', (req, res) => {
+  const rows = db.prepare('SELECT * FROM students').all();
+  res.json(rows);
 });
 
-app.post('/api/students', async (req, res) => {
+app.post('/api/students', (req, res) => {
   const student = { 
     id: Date.now().toString(), 
-    name: req.body.name,
+    name: req.body.name || '',
     grade: req.body.className || req.body.grade || 'تمهيدي',
     parent_phone: req.body.phone || req.body.parent_phone || '',
     join_date: req.body.joinDate || req.body.join_date || new Date().toISOString().split('T')[0],
@@ -45,133 +78,96 @@ app.post('/api/students', async (req, res) => {
     paid: req.body.paid || '0'
   };
   
-  try {
-    if (supabase) {
-      const { error } = await supabase.from('students').insert([student]);
-      if (error) console.error("Supabase Insert Error:", error);
-      
-      if (parseFloat(req.body.paid) > 0) {
-        await supabase.from('payments').insert([{ 
-          id: Math.floor(1000 + Math.random() * 9000).toString(), 
-          studentName: req.body.name, 
-          amount: parseFloat(req.body.paid), 
-          date: new Date().toISOString().split('T')[0] 
-        }]);
-      }
-    }
-  } catch (e) {
-    console.error("Server Insert Error:", e);
+  db.prepare('INSERT INTO students (id, name, grade, parent_phone, join_date, monthlyFee, discount, paid) VALUES (@id, @name, @grade, @parent_phone, @join_date, @monthlyFee, @discount, @paid)').run(student);
+  
+  if (parseFloat(req.body.paid) > 0) {
+    const payment = {
+      id: Math.floor(1000 + Math.random() * 9000).toString(),
+      studentName: student.name,
+      amount: parseFloat(req.body.paid),
+      date: new Date().toISOString().split('T')[0]
+    };
+    db.prepare('INSERT INTO payments (id, studentName, amount, date) VALUES (@id, @studentName, @amount, @date)').run(payment);
   }
   res.json(student);
 });
 
-app.delete('/api/students/:id', async (req, res) => {
-  try {
-    if (supabase) await supabase.from('students').delete().eq('id', req.params.id);
-  } catch (e) {}
+app.delete('/api/students/:id', (req, res) => {
+  db.prepare('DELETE FROM students WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-app.get('/api/payments', async (req, res) => {
-  try {
-    if (supabase) {
-      const { data, error } = await supabase.from('payments').select('*');
-      if (!error) return res.json(data || []);
-    }
-  } catch (e) {}
-  res.json([]);
+// --- المقبوضات والدفعات ---
+app.get('/api/payments', (req, res) => {
+  const rows = db.prepare('SELECT * FROM payments').all();
+  res.json(rows);
 });
 
-app.post('/api/students/pay', async (req, res) => {
+app.post('/api/students/pay', (req, res) => {
   const { id, amount, studentName } = req.body;
-  try {
-    if (supabase) {
-      const { data } = await supabase.from('students').select('*').eq('id', id).single();
-      if (data) {
-        const newPaid = (parseFloat(data.paid) || 0) + parseFloat(amount);
-        await supabase.from('students').update({ paid: newPaid }).eq('id', id);
-        await supabase.from('payments').insert([{ 
-          id: Math.floor(1000 + Math.random() * 9000).toString(), 
-          studentName: studentName || data.name, 
-          amount: parseFloat(amount), 
-          date: new Date().toISOString().split('T')[0] 
-        }]);
-      }
-    }
-  } catch (e) {}
+  const student = db.prepare('SELECT * FROM students WHERE id = ?').get(id);
+  if (student) {
+    const newPaid = (parseFloat(student.paid) || 0) + parseFloat(amount);
+    db.prepare('UPDATE students SET paid = ? WHERE id = ?').run(newPaid, id);
+    
+    const payment = {
+      id: Math.floor(1000 + Math.random() * 9000).toString(),
+      studentName: studentName || student.name,
+      amount: parseFloat(amount),
+      date: new Date().toISOString().split('T')[0]
+    };
+    db.prepare('INSERT INTO payments (id, studentName, amount, date) VALUES (@id, @studentName, @amount, @date)').run(payment);
+  }
   res.json({ success: true });
 });
 
-app.get('/api/expenses', async (req, res) => {
-  try {
-    if (supabase) {
-      const { data, error } = await supabase.from('expenses').select('*');
-      if (!error) return res.json(data || []);
-    }
-  } catch (e) {}
-  res.json([]);
+// --- المصروفات ---
+app.get('/api/expenses', (req, res) => {
+  const rows = db.prepare('SELECT * FROM expenses').all();
+  res.json(rows);
 });
 
-app.post('/api/expenses', async (req, res) => {
-  const expense = { id: Date.now().toString(), ...req.body };
-  try {
-    if (supabase) await supabase.from('expenses').insert([expense]);
-  } catch (e) {}
+app.post('/api/expenses', (req, res) => {
+  const expense = { id: Date.now().toString(), title: req.body.title || '', amount: req.body.amount || '0', date: req.body.date || new Date().toISOString().split('T')[0] };
+  db.prepare('INSERT INTO expenses (id, title, amount, date) VALUES (@id, @title, @amount, @date)').run(expense);
   res.json(expense);
 });
 
-app.delete('/api/expenses/:id', async (req, res) => {
-  try {
-    if (supabase) await supabase.from('expenses').delete().eq('id', req.params.id);
-  } catch (e) {}
+app.delete('/api/expenses/:id', (req, res) => {
+  db.prepare('DELETE FROM expenses WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-app.get('/api/attendance', async (req, res) => {
-  try {
-    if (supabase) {
-      const { data, error } = await supabase.from('attendance').select('*');
-      if (!error) return res.json(data || []);
-    }
-  } catch (e) {}
-  res.json([]);
+// --- الحضور والغياب ---
+app.get('/api/attendance', (req, res) => {
+  const rows = db.prepare('SELECT * FROM attendance').all();
+  res.json(rows);
 });
 
-app.post('/api/attendance', async (req, res) => {
+app.post('/api/attendance', (req, res) => {
   const { studentId, status } = req.body;
   const today = new Date().toISOString().split('T')[0];
   const time = new Date().toLocaleTimeString('ar-EG');
-  try {
-    if (supabase) {
-      await supabase.from('attendance').delete().eq('studentId', studentId).eq('date', today);
-      await supabase.from('attendance').insert([{ studentId, status, date: today, time }]);
-    }
-  } catch (e) {}
+  
+  db.prepare('DELETE FROM attendance WHERE studentId = ? AND date = ?').run(studentId, today);
+  db.prepare('INSERT INTO attendance (studentId, status, date, time) VALUES (?, ?, ?, ?)').run(studentId, status, today, time);
   res.json({ success: true });
 });
 
-app.get('/api/books', async (req, res) => {
-  try {
-    if (supabase) {
-      const { data, error } = await supabase.from('books').select('*');
-      if (!error) return res.json(data || []);
-    }
-  } catch (e) {}
-  res.json([]);
+// --- الكتب ---
+app.get('/api/books', (req, res) => {
+  const rows = db.prepare('SELECT * FROM books').all();
+  res.json(rows);
 });
 
-app.post('/api/books', async (req, res) => {
-  const book = { id: Date.now().toString(), ...req.body };
-  try {
-    if (supabase) await supabase.from('books').insert([book]);
-  } catch (e) {}
+app.post('/api/books', (req, res) => {
+  const book = { id: Date.now().toString(), studentId: req.body.studentId || '', studentName: req.body.studentName || '', title: req.body.title || '', price: req.body.price || '0', date: req.body.date || new Date().toISOString().split('T')[0] };
+  db.prepare('INSERT INTO books (id, studentId, studentName, title, price, date) VALUES (@id, @studentId, @studentName, @title, @price, @date)').run(book);
   res.json(book);
 });
 
-app.delete('/api/books/:id', async (req, res) => {
-  try {
-    if (supabase) await supabase.from('books').delete().eq('id', req.params.id);
-  } catch (e) {}
+app.delete('/api/books/:id', (req, res) => {
+  db.prepare('DELETE FROM books WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
