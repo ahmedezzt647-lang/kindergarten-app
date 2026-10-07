@@ -191,7 +191,7 @@ app.get('/', (req, res) => {
       }
 
       function populateStudentSelect(students) {
-        document.getElementById('book-student-select').innerHTML = '<option value="">اختر الطالب...</option>' + students.map(s => \`<option value="\${s.id}">\${s.name} - (\${s.className || 'بدون صف'})\</option>\`).join('');
+        document.getElementById('book-student-select').innerHTML = '<option value="">اختر الطالب...</option>' + students.map(s => \`<option value="\${s.id}">\${s.name} - (\${s.grade || 'بدون صف'})\</option>\`).join('');
       }
       function getStudentBooksTotal(studentId) { return allBookSales.filter(b => b.studentId === studentId).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0); }
 
@@ -202,8 +202,8 @@ app.get('/', (req, res) => {
       function renderClasses(students) {
         const classesMap = {};
         students.forEach(s => {
-          const className = (s.className && s.className.trim()) ? s.className.trim() : 'غير محدد';
-          const months = calculateMonths(s.joinDate || new Date());
+          const className = (s.grade && s.grade.trim()) ? s.grade.trim() : 'غير محدد';
+          const months = calculateMonths(s.join_date || new Date());
           const due = (((parseFloat(s.monthlyFee) || 0) - (parseFloat(s.discount) || 0)) * months) + getStudentBooksTotal(s.id);
           const paid = parseFloat(s.paid) || 0;
           if (!classesMap[className]) classesMap[className] = { count: 0, totalDue: 0, totalPaid: 0 };
@@ -233,14 +233,14 @@ app.get('/', (req, res) => {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('attendance-table').innerHTML = students.map(s => {
           const rec = attendance.find(a => a.studentId === s.id && a.date === today);
-          return \`<tr><td>\${s.name}</td><td>\${s.className}</td><td><b>\${rec ? (rec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'لم يسجل'}</b></td><td>\${rec ? rec.time : '-'}</td><td><button class="btn-pay" onclick="markAttendance('\${s.id}', 'present')">حاضر</button> <button class="btn-absent" onclick="markAttendance('\${s.id}', 'absent')">غائب</button></td></tr>\`;
+          return \`<tr><td>\${s.name}</td><td>\${s.grade}</td><td><b>\${rec ? (rec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'لم يسجل'}</b></td><td>\${rec ? rec.time : '-'}</td><td><button class="btn-pay" onclick="markAttendance('\${s.id}', 'present')">حاضر</button> <button class="btn-absent" onclick="markAttendance('\${s.id}', 'absent')">غائب</button></td></tr>\`;
         }).join('');
       }
 
       function renderStudents(data) {
         const today = new Date().toISOString().split('T')[0];
         const rows = data.map(s => {
-          const months = calculateMonths(s.joinDate || new Date());
+          const months = calculateMonths(s.join_date || new Date());
           const monthlyFee = parseFloat(s.monthlyFee) || 0;
           const booksTotal = getStudentBooksTotal(s.id);
           const totalDue = ((monthlyFee - (parseFloat(s.discount) || 0)) * months) + booksTotal;
@@ -248,7 +248,7 @@ app.get('/', (req, res) => {
           const remaining = totalDue - paid;
           const attRec = allAttendance.find(a => a.studentId === s.id && a.date === today);
           return \`<tr>
-            <td><b>\${s.name}</b></td><td>\${s.className}</td><td><a href="tel:\${s.phone}" style="color:#3b82f6; text-decoration:none;">\${s.phone}</a></td><td>\${s.joinDate || '-'}</td><td>\${months} شهر</td>
+            <td><b>\${s.name}</b></td><td>\${s.grade}</td><td><a href="tel:\${s.parent_phone}" style="color:#3b82f6; text-decoration:none;">\${s.parent_phone}</a></td><td>\${s.join_date || '-'}</td><td>\${months} شهر</td>
             <td><span>\${monthlyFee} ر.س</span><span class="fee-breakdown">📚 كتب: <b>\${booksTotal} ر.س</b></span></td>
             <td><b>\${totalDue} ر.س</b></td><td>\${paid} ر.س</td><td><span class="\${remaining > 0 ? 'badge-danger' : 'badge-success'}">\${remaining} ر.س</span></td>
             <td>\${attRec ? (attRec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'غير مسجل'}</td>
@@ -290,10 +290,29 @@ app.get('/', (req, res) => {
       }
 
       async function addStudent() {
-        const name = document.getElementById('std-name').value; const className = document.getElementById('std-class').value; const phone = document.getElementById('std-phone').value; const joinDate = document.getElementById('std-join-date').value; const monthlyFee = document.getElementById('std-monthly-fee').value; const discount = document.getElementById('std-discount').value; const paid = document.getElementById('std-paid').value;
+        const name = document.getElementById('std-name').value; 
+        const className = document.getElementById('std-class').value; 
+        const phone = document.getElementById('std-phone').value; 
+        const joinDate = document.getElementById('std-join-date').value; 
+        const monthlyFee = document.getElementById('std-monthly-fee').value; 
+        const discount = document.getElementById('std-discount').value; 
+        const paid = document.getElementById('std-paid').value;
+        
         if(!name || !monthlyFee) return alert('يرجى كتابة اسم الطفل والرسم الشهري');
-        await fetch('/api/students', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name, className, phone, joinDate, monthlyFee, discount, paid }) });
-        document.getElementById('std-name').value = ''; document.getElementById('std-monthly-fee').value = ''; document.getElementById('std-paid').value = ''; fetchData();
+        
+        await fetch('/api/students', { 
+          method: 'POST', 
+          headers: {'Content-Type': 'application/json'}, 
+          body: JSON.stringify({ name, className, phone, joinDate, monthlyFee, discount, paid }) 
+        });
+        
+        document.getElementById('std-name').value = ''; 
+        document.getElementById('std-class').value = ''; 
+        document.getElementById('std-phone').value = ''; 
+        document.getElementById('std-monthly-fee').value = ''; 
+        document.getElementById('std-discount').value = ''; 
+        document.getElementById('std-paid').value = ''; 
+        fetchData();
       }
 
       async function payExtra(id, studentName) {
@@ -330,7 +349,17 @@ app.get('/api/students', async (req, res) => {
 });
 
 app.post('/api/students', async (req, res) => {
-  const student = { id: Date.now().toString(), ...req.body };
+  const student = { 
+    id: Date.now().toString(), 
+    name: req.body.name,
+    grade: req.body.className,
+    parent_phone: req.body.phone,
+    join_date: req.body.joinDate,
+    monthlyFee: req.body.monthlyFee,
+    discount: req.body.discount,
+    paid: req.body.paid
+  };
+  
   if (supabase) {
     await supabase.from('students').insert([student]);
     if (parseFloat(req.body.paid) > 0) {
