@@ -17,6 +17,11 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } }) : null;
 
+// بيانات افتراضية تظهر فقط في حال كان السحابي فارغاً لكي لاختفي شيء
+const defaultStudents = [
+  { id: '1', name: 'أحمد محمد', grade: 'تمهيدي', parent_phone: '0501234567', join_date: '2026-01-01', monthlyFee: '500', discount: '0', paid: '500' }
+];
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -26,10 +31,10 @@ app.get('/api/students', async (req, res) => {
   try {
     if (supabase) {
       const { data, error } = await supabase.from('students').select('*');
-      if (!error) return res.json(data || []);
+      if (!error && data && data.length > 0) return res.json(data);
     }
   } catch (e) {}
-  res.json([]);
+  res.json(defaultStudents);
 });
 
 app.post('/api/students', async (req, res) => {
