@@ -162,32 +162,52 @@
     function hideBox(boxId) { document.getElementById(boxId).classList.remove('active'); }
 
     async function fetchData() {
-      const [resExp, resStd, resPay, resAtt, resBooks] = await Promise.all([
-        fetch('/api/expenses'), fetch('/api/students'), fetch('/api/payments'), fetch('/api/attendance'), fetch('/api/books')
-      ]);
-      allExpenses = await resExp.json(); allStudents = await resStd.json(); allPayments = await resPay.json(); allAttendance = await resAtt.json(); allBookSales = await resBooks.json();
-      renderExpenses(allExpenses); renderStudents(allStudents); renderRevenue(allPayments); renderClasses(allStudents); renderAttendance(allStudents, allAttendance); renderBookSales(allBookSales); populateStudentSelect(allStudents); updateStats(allExpenses, allStudents, allPayments, allBookSales);
+      try {
+        const [resExp, resStd, resPay, resAtt, resBooks] = await Promise.all([
+          fetch('/api/expenses'), fetch('/api/students'), fetch('/api/payments'), fetch('/api/attendance'), fetch('/api/books')
+        ]);
+        allExpenses = await resExp.json(); 
+        allStudents = await resStd.json(); 
+        allPayments = await resPay.json(); 
+        allAttendance = await resAtt.json(); 
+        allBookSales = await resBooks.json();
+        
+        renderExpenses(allExpenses); 
+        renderStudents(allStudents); 
+        renderRevenue(allPayments); 
+        renderClasses(allStudents); 
+        renderAttendance(allStudents, allAttendance); 
+        renderBookSales(allBookSales); 
+        populateStudentSelect(allStudents); 
+        updateStats(allExpenses, allStudents, allPayments, allBookSales);
+      } catch(err) {
+        console.error("خطأ في جلب البيانات:", err);
+      }
     }
 
     function populateStudentSelect(students) {
       let options = '<option value="">اختر الطالب...</option>';
-      for(let i=0; i<students.length; i++) {
-        let s = students[i];
-        options += '<option value="' + s.id + '">' + s.name + ' - (' + (s.grade || 'بدون صف') + ')</option>';
+      if (Array.isArray(students)) {
+        for(let i=0; i<students.length; i++) {
+          let s = students[i];
+          options += '<option value="' + (s.id || '') + '">' + (s.name || 'بدون اسم') + ' - (' + (s.grade || s.className || 'بدون صف') + ')</option>';
+        }
       }
       document.getElementById('book-student-select').innerHTML = options;
     }
 
-    function getStudentBooksTotal(studentId) { return allBookSales.filter(b => b.studentId === studentId).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0); }
+    function getStudentBooksTotal(studentId) { 
+      return allBookSales.filter(b => b.studentId === studentId).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0); 
+    }
 
     function renderBookSales(books) {
       let html = '';
-      if(books.length === 0) {
+      if(!books || books.length === 0) {
         html = '<tr><td colspan="6">لا توجد مبيعات كتب حتى الآن</td></tr>';
       } else {
         for(let i=0; i<books.length; i++) {
           let b = books[i];
-          html += '<tr><td>' + (i+1) + '</td><td><b>' + b.studentName + '</b></td><td>' + b.title + '</td><td style="color:#d97706; font-weight:bold;">' + b.price + ' ر.س</td><td>' + b.date + '</td><td><button class="btn-delete" onclick="deleteBookSale(\'' + b.id + '\')">حذف</button></td></tr>';
+          html += '<tr><td>' + (i+1) + '</td><td><b>' + (b.studentName || '-') + '</b></td><td>' + (b.title || '-') + '</td><td style="color:#d97706; font-weight:bold;">' + (b.price || 0) + ' ر.س</td><td>' + (b.date || '-') + '</td><td><button class="btn-delete" onclick="deleteBookSale(\'' + b.id + '\')">حذف</button></td></tr>';
         }
       }
       document.getElementById('books-table').innerHTML = html;
@@ -195,17 +215,22 @@
 
     function renderClasses(students) {
       const classesMap = {};
-      students.forEach(s => {
-        const className = (s.grade && s.grade.trim()) ? s.grade.trim() : 'غير محدد';
-        const months = calculateMonths(s.join_date || new Date());
-        const due = (((parseFloat(s.monthlyFee) || 0) - (parseFloat(s.discount) || 0)) * months) + getStudentBooksTotal(s.id);
-        const paid = parseFloat(s.paid) || 0;
-        if (!classesMap[className]) classesMap[className] = { count: 0, totalDue: 0, totalPaid: 0 };
-        classesMap[className].count++; classesMap[className].totalDue += due; classesMap[className].totalPaid += paid;
-      });
+      if (Array.isArray(students)) {
+        students.forEach(s => {
+          const g = s.grade || s.className || 'غير محدد';
+          const className = g.trim() ? g.trim() : 'غير محدد';
+          const months = calculateMonths(s.join_date || s.joinDate || new Date());
+          const due = (((parseFloat(s.monthlyFee) || 0) - (parseFloat(s.discount) || 0)) * months) + getStudentBooksTotal(s.id);
+          const paid = parseFloat(s.paid) || 0;
+          if (!classesMap[className]) classesMap[className] = { count: 0, totalDue: 0, totalPaid: 0 };
+          classesMap[className].count++; classesMap[className].totalDue += due; classesMap[className].totalPaid += paid;
+        });
+      }
       const keys = Object.keys(classesMap);
       if (keys.length === 0) {
-        document.getElementById('classes-table').innerHTML = '<tr><td colspan="5">لا توجد صفوف</td></tr>'; document.getElementById('classes-table-main').innerHTML = '<tr><td colspan="5">لا توجد صفوف</td></tr>'; return;
+        document.getElementById('classes-table').innerHTML = '<tr><td colspan="5">لا توجد صفوف</td></tr>'; 
+        document.getElementById('classes-table-main').innerHTML = '<tr><td colspan="5">لا توجد صفوف</td></tr>'; 
+        return;
       }
       document.getElementById('total-classes').innerText = keys.length;
       let rows = '';
@@ -213,17 +238,18 @@
         const item = classesMap[cName];
         rows += '<tr><td><b>' + cName + '</b></td><td>' + item.count + ' طفل</td><td>' + item.totalDue + ' ر.س</td><td style="color:#059669; font-weight:bold;">' + item.totalPaid + ' ر.س</td><td style="color:#dc2626; font-weight:bold;">' + (item.totalDue - item.totalPaid) + ' ر.س</td></tr>';
       });
-      document.getElementById('classes-table').innerHTML = rows; document.getElementById('classes-table-main').innerHTML = rows;
+      document.getElementById('classes-table').innerHTML = rows; 
+      document.getElementById('classes-table-main').innerHTML = rows;
     }
 
     function renderExpenses(data) {
       let html = '';
-      if(data.length === 0) {
+      if(!data || data.length === 0) {
         html = '<tr><td colspan="5">لا توجد مصروفات</td></tr>';
       } else {
         for(let i=0; i<data.length; i++) {
           let e = data[i];
-          html += '<tr><td>' + (i+1) + '</td><td><b>' + e.title + '</b></td><td style="color:#dc2626; font-weight:bold;">' + e.amount + ' ر.س</td><td>' + (e.date || '-') + '</td><td><button class="btn-delete" onclick="deleteExpense(\'' + e.id + '\')">حذف</button></td></tr>';
+          html += '<tr><td>' + (i+1) + '</td><td><b>' + (e.title || '-') + '</b></td><td style="color:#dc2626; font-weight:bold;">' + (e.amount || 0) + ' ر.س</td><td>' + (e.date || '-') + '</td><td><button class="btn-delete" onclick="deleteExpense(\'' + e.id + '\')">حذف</button></td></tr>';
         }
       }
       document.getElementById('expenses-table').innerHTML = html;
@@ -231,13 +257,13 @@
 
     function renderRevenue(payments) {
       let html = '';
-      if(payments.length === 0) {
+      if(!payments || payments.length === 0) {
         html = '<tr><td colspan="6">لا توجد عمليات دفع</td></tr>';
       } else {
         for(let i=0; i<payments.length; i++) {
           let p = payments[i];
           let pid = p.id || (i + 1001);
-          html += '<tr><td>' + (i+1) + '</td><td><b>#' + pid + '</b></td><td>' + p.studentName + '</td><td style="color:#059669; font-weight:bold;">' + p.amount + ' ر.س</td><td>' + p.date + '</td><td><button class="btn-pay" onclick="printReceipt(\'' + pid + '\', \'' + p.studentName + '\', \'' + p.amount + '\', \'' + p.date + '\')">🖨️ طباعة</button></td></tr>';
+          html += '<tr><td>' + (i+1) + '</td><td><b>#' + pid + '</b></td><td>' + (p.studentName || '-') + '</td><td style="color:#059669; font-weight:bold;">' + (p.amount || 0) + ' ر.س</td><td>' + (p.date || '-') + '</td><td><button class="btn-pay" onclick="printReceipt(\'' + pid + '\', \'' + (p.studentName || '') + '\', \'' + (p.amount || 0) + '\', \'' + (p.date || '') + '\')">🖨️ طباعة</button></td></tr>';
         }
       }
       document.getElementById('revenue-table').innerHTML = html;
@@ -246,51 +272,59 @@
     function renderAttendance(students, attendance) {
       const today = new Date().toISOString().split('T')[0];
       let html = '';
-      students.forEach(s => {
-        const rec = attendance.find(a => a.studentId === s.id && a.date === today);
-        let statusText = rec ? (rec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'لم يسجل';
-        let timeText = rec ? rec.time : '-';
-        html += '<tr><td>' + s.name + '</td><td>' + s.grade + '</td><td><b>' + statusText + '</b></td><td>' + timeText + '</td><td><button class="btn-pay" onclick="markAttendance(\'' + s.id + '\', \'present\')">حاضر</button> <button class="btn-absent" onclick="markAttendance(\'' + s.id + '\', \'absent\')">غائب</button></td></tr>';
-      });
+      if (Array.isArray(students)) {
+        students.forEach(s => {
+          const rec = Array.isArray(attendance) ? attendance.find(a => a.studentId === s.id && a.date === today) : null;
+          let statusText = rec ? (rec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'لم يسجل';
+          let timeText = rec ? rec.time : '-';
+          html += '<tr><td>' + (s.name || '-') + '</td><td>' + (s.grade || s.className || '-') + '</td><td><b>' + statusText + '</b></td><td>' + timeText + '</td><td><button class="btn-pay" onclick="markAttendance(\'' + s.id + '\', \'present\')">حاضر</button> <button class="btn-absent" onclick="markAttendance(\'' + s.id + '\', \'absent\')">غائب</button></td></tr>';
+        });
+      }
       document.getElementById('attendance-table').innerHTML = html;
     }
 
     function renderStudents(data) {
       const today = new Date().toISOString().split('T')[0];
       let rows = '';
-      data.forEach(s => {
-        const months = calculateMonths(s.join_date || new Date());
-        const monthlyFee = parseFloat(s.monthlyFee) || 0;
-        const booksTotal = getStudentBooksTotal(s.id);
-        const totalDue = ((monthlyFee - (parseFloat(s.discount) || 0)) * months) + booksTotal;
-        const paid = parseFloat(s.paid) || 0;
-        const remaining = totalDue - paid;
-        const attRec = allAttendance.find(a => a.studentId === s.id && a.date === today);
-        let attText = attRec ? (attRec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'غير مسجل';
-        let badgeClass = remaining > 0 ? 'badge-danger' : 'badge-success';
+      if(!data || data.length === 0) {
+        rows = '<tr><td colspan="10">لا توجد بيانات طلاب مسجلة</td></tr>';
+      } else {
+        data.forEach(s => {
+          const months = calculateMonths(s.join_date || s.joinDate || new Date());
+          const monthlyFee = parseFloat(s.monthlyFee) || 0;
+          const booksTotal = getStudentBooksTotal(s.id);
+          const totalDue = ((monthlyFee - (parseFloat(s.discount) || 0)) * months) + booksTotal;
+          const paid = parseFloat(s.paid) || 0;
+          const remaining = totalDue - paid;
+          const attRec = Array.isArray(allAttendance) ? allAttendance.find(a => a.studentId === s.id && a.date === today) : null;
+          let attText = attRec ? (attRec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'غير مسجل';
+          let badgeClass = remaining > 0 ? 'badge-danger' : 'badge-success';
 
-        rows += '<tr>' +
-          '<td><b>' + s.name + '</b></td>' +
-          '<td>' + s.grade + '</td>' +
-          '<td><a href="tel:' + s.parent_phone + '" style="color:#3b82f6; text-decoration:none;">' + s.parent_phone + '</a></td>' +
-          '<td>' + (s.join_date || '-') + '</td>' +
-          '<td>' + months + ' شهر</td>' +
-          '<td><span>' + monthlyFee + ' ر.س</span><span class="fee-breakdown">📚 كتب: <b>' + booksTotal + ' ر.س</b></span></td>' +
-          '<td><b>' + totalDue + ' ر.س</b></td>' +
-          '<td>' + paid + ' ر.س</td>' +
-          '<td><span class="' + badgeClass + '">' + remaining + ' ر.س</span></td>' +
-          '<td>' + attText + '</td>' +
-          '<td><button class="btn-pay" onclick="payExtra(\'' + s.id + '\', \'' + s.name + '\')">+ دفعة</button> <button class="btn-delete" onclick="deleteStudent(\'' + s.id + '\')">حذف</button></td>' +
-        '</tr>';
-      });
-      document.getElementById('students-table-main').innerHTML = rows; document.getElementById('students-table-detail').innerHTML = rows;
+          rows += '<tr>' +
+            '<td><b>' + (s.name || '-') + '</b></td>' +
+            '<td>' + (s.grade || s.className || '-') + '</td>' +
+            '<td><a href="tel:' + (s.parent_phone || s.phone || '') + '" style="color:#3b82f6; text-decoration:none;">' + (s.parent_phone || s.phone || '-') + '</a></td>' +
+            '<td>' + (s.join_date || s.joinDate || '-') + '</td>' +
+            '<td>' + months + ' شهر</td>' +
+            '<td><span>' + monthlyFee + ' ر.س</span><span class="fee-breakdown">📚 كتب: <b>' + booksTotal + ' ر.س</b></span></td>' +
+            '<td><b>' + totalDue + ' ر.س</b></td>' +
+            '<td>' + paid + ' ر.س</td>' +
+            '<td><span class="' + badgeClass + '">' + remaining + ' ر.س</span></td>' +
+            '<td>' + attText + '</td>' +
+            '<td><button class="btn-pay" onclick="payExtra(\'' + s.id + '\', \'' + s.name + '\')">+ دفعة</button> <button class="btn-delete" onclick="deleteStudent(\'' + s.id + '\')">حذف</button></td>' +
+          '</tr>';
+        });
+      }
+      document.getElementById('students-table-main').innerHTML = rows; 
+      document.getElementById('students-table-detail').innerHTML = rows;
     }
 
     function updateStats(expenses, students, payments, books) {
-      document.getElementById('total-students').innerText = students.length;
-      const totalExp = expenses.reduce((acc, c) => acc + Number(c.amount || 0), 0);
-      const totalRev = payments.reduce((acc, c) => acc + Number(c.amount || 0), 0);
-      const totalBooksSales = books.reduce((acc, c) => acc + Number(c.price || 0), 0);
+      document.getElementById('total-students').innerText = Array.isArray(students) ? students.length : 0;
+      const totalExp = Array.isArray(expenses) ? expenses.reduce((acc, c) => acc + Number(c.amount || 0), 0) : 0;
+      const totalRev = Array.isArray(payments) ? payments.reduce((acc, c) => acc + Number(c.amount || 0), 0) : 0;
+      const totalBooksSales = Array.isArray(books) ? books.reduce((acc, c) => acc + Number(c.price || 0), 0) : 0;
+      
       document.getElementById('total-expenses').innerText = totalExp + ' ر.س';
       document.getElementById('total-revenue').innerText = totalRev + ' ر.س';
       document.getElementById('total-books-sales').innerText = totalBooksSales + ' ر.س';
