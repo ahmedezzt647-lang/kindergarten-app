@@ -1,29 +1,33 @@
 const express = require('express');
-const cors = require('cors');
-
 const app = express();
 
-// تفعيل CORS واستقبال بيانات JSON
-app.use(cors());
+// تفعيل استقبال JSON وحل مشكلة CORS يدوياً بدون مكتبات إضافية
 app.use(express.json());
 
-// مصفوفات لحفظ البيانات محلياً داخل السيرفر
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// مصفوفات لحفظ البيانات محلياً
 let students = [];
 let expenses = [];
 
-// الصفحة الرئيسية لتأكيد عمل السيرفر
+// اختبار تشغيل السيرفر
 app.get('/', (req, res) => {
-  res.send('Server is running smoothly!');
+  res.send('Server is running successfully!');
 });
 
-// --- مسارات الطلاب (Students API) ---
-
-// جلب كافة الطلاب
+// --- API الطلاب ---
 app.get('/api/students', (req, res) => {
   res.json(students);
 });
 
-// إضافة طالب جديد
 app.post('/api/students', (req, res) => {
   try {
     const student = { id: Date.now().toString(), ...req.body };
@@ -34,7 +38,6 @@ app.post('/api/students', (req, res) => {
   }
 });
 
-// تسديد دفعة للطفل
 app.post('/api/students/pay', (req, res) => {
   try {
     const { id, amount } = req.body;
@@ -50,14 +53,11 @@ app.post('/api/students/pay', (req, res) => {
   }
 });
 
-// --- مسارات المصروفات (Expenses API) ---
-
-// جلب كافة المصروفات
+// --- API المصروفات ---
 app.get('/api/expenses', (req, res) => {
   res.json(expenses);
 });
 
-// إضافة مصروف جديد
 app.post('/api/expenses', (req, res) => {
   try {
     const expense = { id: Date.now().toString(), ...req.body };
@@ -68,7 +68,7 @@ app.post('/api/expenses', (req, res) => {
   }
 });
 
-// تحديد المنفذ وتشغيل السيرفر
+// تشغيل السيرفر
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
