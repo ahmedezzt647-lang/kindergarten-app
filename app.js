@@ -12,10 +12,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// الاتصال بقاعدة البيانات السحابية Supabase
+// الاتصال بقاعدة البيانات السحابية Supabase مع إعدادات السيرفر الصحيحة
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
 
 app.get('/', (req, res) => {
   res.send(`
@@ -191,12 +191,12 @@ app.get('/', (req, res) => {
       }
 
       function populateStudentSelect(students) {
-        document.getElementById('book-student-select').innerHTML = '<option value="">اختر الطالب...</option>' + students.map(s => \`<option value="\${s.id}">\${s.name} - (\${s.grade || 'بدون صف'})\</option>\`).join('');
+        document.getElementById('book-student-select').innerHTML = '<option value="">اختر الطالب...</option>' + students.map(s => `<option value="${s.id}">${s.name} - (${s.grade || 'بدون صف'})</option>`).join('');
       }
       function getStudentBooksTotal(studentId) { return allBookSales.filter(b => b.studentId === studentId).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0); }
 
       function renderBookSales(books) {
-        document.getElementById('books-table').innerHTML = books.length === 0 ? '<tr><td colspan="6">لا توجد مبيعات كتب حتى الآن</td></tr>' : books.map((b, i) => \`<tr><td>\${i+1}</td><td><b>\${b.studentName}</b></td><td>\${b.title}</td><td style="color:#d97706; font-weight:bold;">\${b.price} ر.س</td><td>\${b.date}</td><td><button class="btn-delete" onclick="deleteBookSale('\${b.id}')">حذف</button></td></tr>\`).join('');
+        document.getElementById('books-table').innerHTML = books.length === 0 ? '<tr><td colspan="6">لا توجد مبيعات كتب حتى الآن</td></tr>' : books.map((b, i) => `<tr><td>${i+1}</td><td><b>${b.studentName}</b></td><td>${b.title}</td><td style="color:#d97706; font-weight:bold;">${b.price} ر.س</td><td>${b.date}</td><td><button class="btn-delete" onclick="deleteBookSale('${b.id}')">حذف</button></td></tr>`).join('');
       }
 
       function renderClasses(students) {
@@ -216,24 +216,24 @@ app.get('/', (req, res) => {
         document.getElementById('total-classes').innerText = keys.length;
         const rows = keys.map(cName => {
           const item = classesMap[cName];
-          return \`<tr><td><b>\${cName}</b></td><td>\${item.count} طفل</td><td>\${item.totalDue} ر.س</td><td style="color:#059669; font-weight:bold;">\${item.totalPaid} ر.س</td><td style="color:#dc2626; font-weight:bold;">\${item.totalDue - item.totalPaid} ر.س</td></tr>\`;
+          return `<tr><td><b>${cName}</b></td><td>${item.count} طفل</td><td>${item.totalDue} ر.س</td><td style="color:#059669; font-weight:bold;">${item.totalPaid} ر.س</td><td style="color:#dc2626; font-weight:bold;">${item.totalDue - item.totalPaid} ر.س</td></tr>`;
         }).join('');
         document.getElementById('classes-table').innerHTML = rows; document.getElementById('classes-table-main').innerHTML = rows;
       }
 
       function renderExpenses(data) {
-        document.getElementById('expenses-table').innerHTML = data.length === 0 ? '<tr><td colspan="5">لا توجد مصروفات</td></tr>' : data.map((e, i) => \`<tr><td>\${i+1}</td><td><b>\${e.title}</b></td><td style="color:#dc2626; font-weight:bold;">\${e.amount} ر.س</td><td>\${e.date || '-'}</td><td><button class="btn-delete" onclick="deleteExpense('\${e.id}')">حذف</button></td></tr>\`).join('');
+        document.getElementById('expenses-table').innerHTML = data.length === 0 ? '<tr><td colspan="5">لا توجد مصروفات</td></tr>' : data.map((e, i) => `<tr><td>${i+1}</td><td><b>${e.title}</b></td><td style="color:#dc2626; font-weight:bold;">${e.amount} ر.س</td><td>${e.date || '-'}</td><td><button class="btn-delete" onclick="deleteExpense('${e.id}')">حذف</button></td></tr>`).join('');
       }
 
       function renderRevenue(payments) {
-        document.getElementById('revenue-table').innerHTML = payments.length === 0 ? '<tr><td colspan="6">لا توجد عمليات دفع</td></tr>' : payments.map((p, i) => \`<tr><td>\${i+1}</td><td><b>#\${p.id || i + 1001}</b></td><td>\${p.studentName}</td><td style="color:#059669; font-weight:bold;">\${p.amount} ر.س</td><td>\${p.date}</td><td><button class="btn-pay" onclick="printReceipt('\${p.id || i + 1001}', '\${p.studentName}', '\${p.amount}', '\${p.date}')">🖨️ طباعة</button></td></tr>\`).join('');
+        document.getElementById('revenue-table').innerHTML = payments.length === 0 ? '<tr><td colspan="6">لا توجد عمليات دفع</td></tr>' : payments.map((p, i) => `<tr><td>${i+1}</td><td><b>#${p.id \vert{}\vert{} i + 1001}</b></td><td>${p.studentName}</td><td style="color:#059669; font-weight:bold;">${p.amount} ر.س</td><td>${p.date}</td><td><button class="btn-pay" onclick="printReceipt('${p.id \vert{}\vert{} i + 1001}', '${p.studentName}', '${p.amount}', '${p.date}')">🖨️ طباعة</button></td></tr>`).join('');
       }
 
       function renderAttendance(students, attendance) {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('attendance-table').innerHTML = students.map(s => {
           const rec = attendance.find(a => a.studentId === s.id && a.date === today);
-          return \`<tr><td>\${s.name}</td><td>\${s.grade}</td><td><b>\${rec ? (rec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'لم يسجل'}</b></td><td>\${rec ? rec.time : '-'}</td><td><button class="btn-pay" onclick="markAttendance('\${s.id}', 'present')">حاضر</button> <button class="btn-absent" onclick="markAttendance('\${s.id}', 'absent')">غائب</button></td></tr>\`;
+          return `<tr><td>${s.name}</td><td>${s.grade}</td><td><b>${rec ? (rec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'لم يسجل'}</b></td><td>${rec ? rec.time : '-'}</td><td><button class="btn-pay" onclick="markAttendance('${s.id}', 'present')">حاضر</button> <button class="btn-absent" onclick="markAttendance('${s.id}', 'absent')">غائب</button></td></tr>`;
         }).join('');
       }
 
@@ -247,13 +247,13 @@ app.get('/', (req, res) => {
           const paid = parseFloat(s.paid) || 0;
           const remaining = totalDue - paid;
           const attRec = allAttendance.find(a => a.studentId === s.id && a.date === today);
-          return \`<tr>
-            <td><b>\${s.name}</b></td><td>\${s.grade}</td><td><a href="tel:\${s.parent_phone}" style="color:#3b82f6; text-decoration:none;">\${s.parent_phone}</a></td><td>\${s.join_date || '-'}</td><td>\${months} شهر</td>
-            <td><span>\${monthlyFee} ر.س</span><span class="fee-breakdown">📚 كتب: <b>\${booksTotal} ر.س</b></span></td>
-            <td><b>\${totalDue} ر.س</b></td><td>\${paid} ر.س</td><td><span class="\${remaining > 0 ? 'badge-danger' : 'badge-success'}">\${remaining} ر.س</span></td>
-            <td>\${attRec ? (attRec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'غير مسجل'}</td>
-            <td><button class="btn-pay" onclick="payExtra('\${s.id}', '\${s.name}')">+ دفعة</button> <button class="btn-delete" onclick="deleteStudent('\${s.id}')">حذف</button></td>
-          </tr>\`;
+          return `<tr>
+            <td><b>${s.name}</b></td><td>${s.grade}</td><td><a href="tel:${s.parent_phone}" style="color:#3b82f6; text-decoration:none;">${s.parent_phone}</a></td><td>${s.join_date \vert{}\vert{} '-'}</td><td>${months} شهر</td>
+            <td><span>${monthlyFee} ر.س</span><span class="fee-breakdown">📚 كتب: <b>${booksTotal} ر.س</b></span></td>
+            <td><b>${totalDue} ر.س</b></td><td>${paid} ر.س</td><td><span class="${remaining > 0 ? 'badge-danger' : 'badge-success'}">${remaining} ر.س</span></td>
+            <td>${attRec ? (attRec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'غير مسجل'}</td>
+            <td><button class="btn-pay" onclick="payExtra('${s.id}', '${s.name}')">+ دفعة</button> <button class="btn-delete" onclick="deleteStudent('${s.id}')">حذف</button></td>
+          </tr>`;
         }).join('');
         document.getElementById('students-table-main').innerHTML = rows; document.getElementById('students-table-detail').innerHTML = rows;
       }
