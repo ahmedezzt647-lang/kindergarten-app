@@ -1,4 +1,5 @@
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
 const app = express();
 
 app.use(express.json());
@@ -10,6 +11,11 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+// الاتصال بقاعدة البيانات السحابية Supabase
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 app.get('/', (req, res) => {
   res.send(`
@@ -169,40 +175,24 @@ app.get('/', (req, res) => {
       document.getElementById('exp-date').valueAsDate = new Date();
       document.getElementById('std-join-date').valueAsDate = new Date();
 
-      let allExpenses = JSON.parse(localStorage.getItem('expenses') || '[]');
-      let allStudents = JSON.parse(localStorage.getItem('students') || '[]');
-      let allPayments = JSON.parse(localStorage.getItem('payments') || '[]');
-      let allAttendance = JSON.parse(localStorage.getItem('attendance') || '[]');
-      let allBookSales = JSON.parse(localStorage.getItem('bookSales') || '[]');
-
-      function saveData() {
-        localStorage.setItem('expenses', JSON.stringify(allExpenses));
-        localStorage.setItem('students', JSON.stringify(allStudents));
-        localStorage.setItem('payments', JSON.stringify(allPayments));
-        localStorage.setItem('attendance', JSON.stringify(allAttendance));
-        localStorage.setItem('bookSales', JSON.stringify(allBookSales));
-      }
+      let allExpenses = []; let allStudents = []; let allPayments = []; let allAttendance = []; let allBookSales = [];
 
       function scrollToSection(secId) { document.getElementById(secId).scrollIntoView({ behavior: 'smooth' }); }
       function calculateMonths(joinDateStr) { const joinDate = new Date(joinDateStr); const now = new Date(); let months = (now.getFullYear() - joinDate.getFullYear()) * 12 + (now.getMonth() - joinDate.getMonth()) + 1; return months > 0 ? months : 1; }
       function showBox(boxId) { document.querySelectorAll('.details-box').forEach(box => box.classList.remove('active')); const targetBox = document.getElementById(boxId); targetBox.classList.add('active'); targetBox.scrollIntoView({ behavior: 'smooth' }); }
       function hideBox(boxId) { document.getElementById(boxId).classList.remove('active'); }
 
-      function refreshUI() {
-        renderExpenses(allExpenses);
-        renderStudents(allStudents);
-        renderRevenue(allPayments);
-        renderClasses(allStudents);
-        renderAttendance(allStudents, allAttendance);
-        renderBookSales(allBookSales);
-        populateStudentSelect(allStudents);
-        updateStats(allExpenses, allStudents, allPayments, allBookSales);
+      async function fetchData() {
+        const [resExp, resStd, resPay, resAtt, resBooks] = await Promise.all([
+          fetch('/api/expenses'), fetch('/api/students'), fetch('/api/payments'), fetch('/api/attendance'), fetch('/api/books')
+        ]);
+        allExpenses = await resExp.json(); allStudents = await resStd.json(); allPayments = await resPay.json(); allAttendance = await resAtt.json(); allBookSales = await resBooks.json();
+        renderExpenses(allExpenses); renderStudents(allStudents); renderRevenue(allPayments); renderClasses(allStudents); renderAttendance(allStudents, allAttendance); renderBookSales(allBookSales); populateStudentSelect(allStudents); updateStats(allExpenses, allStudents, allPayments, allBookSales);
       }
 
       function populateStudentSelect(students) {
         document.getElementById('book-student-select').innerHTML = '<option value="">اختر الطالب...</option>' + students.map(s => \`<option value="\${s.id}">\${s.name} - (\${s.className || 'بدون صف'})\</option>\`).join('');
       }
-
       function getStudentBooksTotal(studentId) { return allBookSales.filter(b => b.studentId === studentId).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0); }
 
       function renderBookSales(books) {
@@ -282,67 +272,155 @@ app.get('/', (req, res) => {
         document.getElementById('rep-net').innerText = (totalRev - totalExp) + ' ر.س';
       }
 
-      function addBookToStudent() {
+      async function addBookToStudent() {
         const studentId = document.getElementById('book-student-select').value;
         const title = document.getElementById('book-title').value;
         const price = document.getElementById('book-price').value;
         if(!studentId || !title || !price) return alert('يرجى اختيار الطالب، وإدخال اسم الكتاب وسعره');
         const student = allStudents.find(s => s.id === studentId);
-        allBookSales.push({ id: Date.now().toString(), studentId, studentName: student ? student.name : '', title, price, date: new Date().toISOString().split('T')[0] });
-        saveData(); document.getElementById('book-title').value = ''; document.getElementById('book-price').value = ''; refreshUI(); showBox('books-details-box');
+        await fetch('/api/books', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ studentId, studentName: student ? student.name : '', title, price, date: new Date().toISOString().split('T')[0] }) });
+        document.getElementById('book-title').value = ''; document.getElementById('book-price').value = ''; fetchData(); showBox('books-details-box');
       }
 
-      function addExpense() {
+      async function addExpense() {
         const title = document.getElementById('exp-title').value; const amount = document.getElementById('exp-amount').value; const date = document.getElementById('exp-date').value;
         if(!title || !amount) return alert('يرجى كتابة البند والمبلغ');
-        allExpenses.push({ id: Date.now().toString(), title, amount, date });
-        saveData(); document.getElementById('exp-title').value = ''; document.getElementById('exp-amount').value = ''; refreshUI();
+        await fetch('/api/expenses', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ title, amount, date }) });
+        document.getElementById('exp-title').value = ''; document.getElementById('exp-amount').value = ''; fetchData();
       }
 
-      function addStudent() {
+      async function addStudent() {
         const name = document.getElementById('std-name').value; const className = document.getElementById('std-class').value; const phone = document.getElementById('std-phone').value; const joinDate = document.getElementById('std-join-date').value; const monthlyFee = document.getElementById('std-monthly-fee').value; const discount = document.getElementById('std-discount').value; const paid = document.getElementById('std-paid').value;
         if(!name || !monthlyFee) return alert('يرجى كتابة اسم الطفل والرسم الشهري');
-        const newStudent = { id: Date.now().toString(), name, className, phone, joinDate, monthlyFee, discount: discount || 0, paid: paid || 0 };
-        allStudents.push(newStudent);
-        if (parseFloat(paid) > 0) {
-          allPayments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: name, amount: parseFloat(paid), date: new Date().toISOString().split('T')[0] });
-        }
-        saveData();
-        document.getElementById('std-name').value = ''; document.getElementById('std-class').value = ''; document.getElementById('std-phone').value = ''; document.getElementById('std-monthly-fee').value = ''; document.getElementById('std-discount').value = ''; document.getElementById('std-paid').value = '';
-        refreshUI();
+        await fetch('/api/students', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name, className, phone, joinDate, monthlyFee, discount, paid }) });
+        document.getElementById('std-name').value = ''; document.getElementById('std-monthly-fee').value = ''; document.getElementById('std-paid').value = ''; fetchData();
       }
 
-      function payExtra(id, studentName) {
+      async function payExtra(id, studentName) {
         const amount = prompt('أدخل مبلغ الدفعة الجديدة (ر.س):'); if(!amount || isNaN(amount)) return;
-        const student = allStudents.find(s => s.id === id);
-        if (student) {
-          student.paid = (parseFloat(student.paid) || 0) + parseFloat(amount);
-          allPayments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] });
-          saveData(); refreshUI();
-        }
+        await fetch('/api/students/pay', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, amount, studentName }) }); fetchData();
       }
 
-      function markAttendance(studentId, status) {
-        const today = new Date().toISOString().split('T')[0];
-        const time = new Date().toLocaleTimeString('ar-EG');
-        allAttendance = allAttendance.filter(a => !(a.studentId === studentId && a.date === today));
-        allAttendance.push({ studentId, status, date: today, time });
-        saveData(); refreshUI();
+      async function markAttendance(studentId, status) {
+        await fetch('/api/attendance', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ studentId, status }) }); fetchData();
       }
 
-      function deleteStudent(id) { if(!confirm('حذف هذا الطالب؟')) return; allStudents = allStudents.filter(s => s.id !== id); saveData(); refreshUI(); }
-      function deleteExpense(id) { if(!confirm('حذف هذا المصروف؟')) return; allExpenses = allExpenses.filter(e => e.id !== id); saveData(); refreshUI(); }
-      function deleteBookSale(id) { if(!confirm('إلغاء شراء هذا الكتاب؟')) return; allBookSales = allBookSales.filter(b => b.id !== id); saveData(); refreshUI(); }
+      async function deleteStudent(id) { if(!confirm('حذف هذا الطالب؟')) return; await fetch('/api/students/' + id, { method: 'DELETE' }); fetchData(); }
+      async function deleteExpense(id) { if(!confirm('حذف هذا المصروف؟')) return; await fetch('/api/expenses/' + id, { method: 'DELETE' }); fetchData(); }
+      async function deleteBookSale(id) { if(!confirm('إلغاء شراء هذا الكتاب؟')) return; await fetch('/api/books/' + id, { method: 'DELETE' }); fetchData(); }
 
       function printReceipt(id, name, amount, date) {
         document.getElementById('rec-id').innerText = id; document.getElementById('rec-name').innerText = name; document.getElementById('rec-amount').innerText = amount; document.getElementById('rec-date').innerText = date; window.print();
       }
 
-      refreshUI();
+      fetchData();
     </script>
   </body>
   </html>
   `);
+});
+
+// APIs للسحابة
+app.get('/api/students', async (req, res) => {
+  if (supabase) {
+    const { data } = await supabase.from('students').select('*');
+    return res.json(data || []);
+  }
+  res.json([]);
+});
+
+app.post('/api/students', async (req, res) => {
+  const student = { id: Date.now().toString(), ...req.body };
+  if (supabase) {
+    await supabase.from('students').insert([student]);
+    if (parseFloat(req.body.paid) > 0) {
+      await supabase.from('payments').insert([{ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: req.body.name, amount: parseFloat(req.body.paid), date: new Date().toISOString().split('T')[0] }]);
+    }
+  }
+  res.json(student);
+});
+
+app.delete('/api/students/:id', async (req, res) => {
+  if (supabase) await supabase.from('students').delete().eq('id', req.params.id);
+  res.json({ success: true });
+});
+
+app.get('/api/payments', async (req, res) => {
+  if (supabase) {
+    const { data } = await supabase.from('payments').select('*');
+    return res.json(data || []);
+  }
+  res.json([]);
+});
+
+app.post('/api/students/pay', async (req, res) => {
+  const { id, amount, studentName } = req.body;
+  if (supabase) {
+    const { data } = await supabase.from('students').select('*').eq('id', id).single();
+    if (data) {
+      const newPaid = (parseFloat(data.paid) || 0) + parseFloat(amount);
+      await supabase.from('students').update({ paid: newPaid }).eq('id', id);
+      await supabase.from('payments').insert([{ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: studentName || data.name, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] }]);
+    }
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/expenses', async (req, res) => {
+  if (supabase) {
+    const { data } = await supabase.from('expenses').select('*');
+    return res.json(data || []);
+  }
+  res.json([]);
+});
+
+app.post('/api/expenses', async (req, res) => {
+  const expense = { id: Date.now().toString(), ...req.body };
+  if (supabase) await supabase.from('expenses').insert([expense]);
+  res.json(expense);
+});
+
+app.delete('/api/expenses/:id', async (req, res) => {
+  if (supabase) await supabase.from('expenses').delete().eq('id', req.params.id);
+  res.json({ success: true });
+});
+
+app.get('/api/attendance', async (req, res) => {
+  if (supabase) {
+    const { data } = await supabase.from('attendance').select('*');
+    return res.json(data || []);
+  }
+  res.json([]);
+});
+
+app.post('/api/attendance', async (req, res) => {
+  const { studentId, status } = req.body;
+  const today = new Date().toISOString().split('T')[0];
+  const time = new Date().toLocaleTimeString('ar-EG');
+  if (supabase) {
+    await supabase.from('attendance').delete().eq('studentId', studentId).eq('date', today);
+    await supabase.from('attendance').insert([{ studentId, status, date: today, time }]);
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/books', async (req, res) => {
+  if (supabase) {
+    const { data } = await supabase.from('books').select('*');
+    return res.json(data || []);
+  }
+  res.json([]);
+});
+
+app.post('/api/books', async (req, res) => {
+  const book = { id: Date.now().toString(), ...req.body };
+  if (supabase) await supabase.from('books').insert([book]);
+  res.json(book);
+});
+
+app.delete('/api/books/:id', async (req, res) => {
+  if (supabase) await supabase.from('books').delete().eq('id', req.params.id);
+  res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 10000;
