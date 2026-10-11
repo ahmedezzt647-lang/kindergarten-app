@@ -69,6 +69,16 @@ function lastMonths(n) {
   for (let i = n - 1; i >= 0; i--) { const d = new Date(y, m - 1 - i, 1); out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); }
   return out;
 }
+const partners = () => (D.settings.partners && D.settings.partners.length ? D.settings.partners : [{ name: 'احمد', share: 50 }, { name: 'عبدالله', share: 50 }]);
+function monthFin(m) {
+  const inc = sumBy(D.payments.filter(p => monthOf(p.date) === m), p => p.amount);
+  const out = sumBy(D.expenses.filter(e => monthOf(e.date) === m), e => e.amount);
+  return { m, inc, out, net: inc - out };
+}
+function activeMonths() {
+  const ms = new Set([...D.payments.map(p => monthOf(p.date)), ...D.expenses.map(e => monthOf(e.date)), monthOf(D.today)].filter(Boolean));
+  return [...ms].sort();
+}
 const sumBy = (arr, f) => arr.reduce((a, x) => a + N(f(x)), 0);
 
 /* ---------- التنقّل ---------- */
@@ -114,7 +124,7 @@ VIEWS.home = () => {
     <button class="fig" onclick="go('attendance')"><span>حضور اليوم</span><b class="num">${present} / ${act_.length}</b><small>${marked < act_.length ? `بقي ${act_.length - marked} بدون تسجيل` : 'اكتمل التسجيل'}</small></button>
     <button class="fig" onclick="UI.finTab='payments';go('finance')"><span>المقبوض هذا الشهر</span><b class="num money-ok">${fmt(income)}</b><small>${cur()}</small></button>
     <button class="fig" onclick="UI.finTab='debts';go('finance')"><span>مبالغ متأخرة</span><b class="num money-bad">${fmt(owed)}</b><small>${debtors.length} طالب</small></button>
-    <button class="fig" onclick="go('reports')"><span>صافي الشهر</span><b class="num">${fmt(income - spent)}</b><small>مصروفات ${fmt(spent)} ${cur()}</small></button>
+    <button class="fig" onclick="go('reports')"><span>صافي الشهر</span><b class="num">${fmt(income - spent)}</b><small>${partners().map(p => `${esc(p.name)}: ${fmt((income - spent) * N(p.share) / 100)}`).join(' · ')}</small></button>
   </div>
 
   <div class="cols">
@@ -360,10 +370,12 @@ VIEWS.finance = () => {
 };
 const FIN = {
   payments() {
-    const list = D.payments;
-    return `<section class="panel"><h2>سجل المقبوضات <button class="btn sm" onclick="csv('payments')">تصدير Excel</button></h2><div class="tbl-wrap"><table><thead><tr><th>الإيصال</th><th>الطالب</th><th>المبلغ</th><th>الطريقة</th><th>التاريخ</th><th></th></tr></thead><tbody>
+    const m = UI.payMonth ?? monthOf(D.today);
+    const list = D.payments.filter(p => !m || monthOf(p.date) === m);
+    return `<div class="filters"><select onchange="UI.payMonth=this.value;render()" aria-label="الشهر"><option value="" ${!m ? 'selected' : ''}>كل الأشهر</option>${activeMonths().reverse().map(x => `<option value="${x}" ${x === m ? 'selected' : ''}>${monthName(x)}</option>`).join('')}</select></div>
+    <section class="panel"><h2>${m ? 'المقبوضات في ' + monthName(m) : 'كل المقبوضات'} <span class="money-ok">${money(sumBy(list, p => p.amount))}</span> <button class="btn sm" onclick="csv('payments')">تصدير Excel</button></h2><div class="tbl-wrap"><table><thead><tr><th>الإيصال</th><th>الطالب</th><th>المبلغ</th><th>الطريقة</th><th>التاريخ</th><th></th></tr></thead><tbody>
     ${list.map(p => `<tr><td class="num">#${p.receiptNo || '—'}</td><td>${esc(p.studentName)}</td><td class="money-ok">${money(p.amount)}</td><td>${esc(p.method || '')}</td><td class="num">${esc(p.date)}</td>
-      <td class="actions"><button class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button><button class="btn sm danger" onclick="del('payments','${p.id}','هذا الإيصال')">حذف</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا توجد دفعات بعد</td></tr>'}
+      <td class="actions"><button class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button><button class="btn sm danger" onclick="del('payments','${p.id}','هذا الإيصال')">حذف</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا توجد دفعات في هذا الشهر</td></tr>'}
     </tbody></table></div></section>`;
   },
   debts() {
@@ -601,6 +613,7 @@ VIEWS.reports = () => {
     <div class="fig"><span>صافي الربح</span><b>${fmt(inc - out)}</b><small>${cur()}</small></div>
     <div class="fig"><span>حركة الطلاب</span><b>+${joined} / −${left}</b><small>التحاق / انقطاع</small></div>
   </div>
+  ${partnersPanel()}
   <div class="cols"><section class="panel"><h2>الصفوف (الطلاب المستمرون)</h2><div class="tbl-wrap"><table><thead><tr><th>الصف</th><th>الطلاب</th><th>المستحق</th><th>المقبوض</th><th>المتبقي</th><th>نسبة التحصيل</th></tr></thead><tbody>
     ${Object.entries(cls).map(([k, c]) => `<tr><td><b>${esc(k)}</b></td><td class="num">${c.n}</td><td>${money(c.due)}</td><td class="money-ok">${money(c.paid)}</td><td class="money-bad">${money(c.due - c.paid)}</td><td><span class="tag ${c.due && c.paid / c.due >= .9 ? 'ok' : 'warn'}">${c.due ? Math.round(c.paid / c.due * 100) : 100}٪</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا يوجد</td></tr>'}
     </tbody></table></div></section>
@@ -610,6 +623,17 @@ VIEWS.reports = () => {
     <a class="btn primary" href="/api/backup" download>تنزيل نسخة احتياطية كاملة</a></div>
     <p class="muted">ننصح بتنزيل نسخة احتياطية مرة كل شهر وحفظها في مكان آمن.</p></section>`;
 };
+function partnersPanel() {
+  const P = partners(), ms = activeMonths();
+  const rows = ms.map(monthFin);
+  const tot = { inc: sumBy(rows, r => r.inc), out: sumBy(rows, r => r.out) }; tot.net = tot.inc - tot.out;
+  const share = (net, p) => net * (N(p.share) / 100);
+  return `<section class="panel"><h2>كل شهر لوحده ونصيب الشركاء <span class="muted">${P.map(p => `${esc(p.name)} ${fmt(p.share)}٪`).join(' · ')}</span></h2>
+  <div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>المقبوض</th><th>المصروفات</th><th>الصافي</th>${P.map(p => `<th>نصيب ${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
+  ${rows.map(r => `<tr${r.m === UI.repMonth ? ' style="background:var(--palm-2)"' : ''}><td><b>${monthName(r.m)}</b></td><td class="money-ok">${money(r.inc)}</td><td class="money-bad">${money(r.out)}</td><td><b>${money(r.net)}</b></td>${P.map(p => `<td><b class="${r.net < 0 ? 'money-bad' : ''}">${money(share(r.net, p))}</b></td>`).join('')}</tr>`).join('')}
+  <tr style="border-top:2px solid var(--line)"><td><b>الإجمالي</b></td><td class="money-ok"><b>${money(tot.inc)}</b></td><td class="money-bad"><b>${money(tot.out)}</b></td><td><b>${money(tot.net)}</b></td>${P.map(p => `<td><b>${money(share(tot.net, p))}</b></td>`).join('')}</tr>
+  </tbody></table></div><p class="muted">المقبوض يُحسب حسب تاريخ الدفع، والصافي = المقبوض − كل المصروفات. تعديل الأسماء والنسب من الإعدادات.</p></section>`;
+}
 function downloadCsv(name, rows) {
   const body = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
@@ -639,6 +663,10 @@ VIEWS.settings = () => {
     <label class="f" style="grid-column:1/-1">بنود المصروفات (افصل بفاصلة)<input name="expenseCategories" value="${esc((s.expenseCategories || []).join('، '))}"></label>
   </div><div class="actions" style="margin-top:14px"><button class="btn primary">حفظ</button></div></form>
 
+  <form class="panel" onsubmit="savePartners(event)"><h2>الشركاء ونسبة كل شريك</h2>
+    <div class="grid g2">${partners().map((p, i) => `<label class="f">اسم الشريك ${i + 1}<input name="n${i}" value="${esc(p.name)}" required></label><label class="f">النسبة ٪<input type="number" min="0" max="100" step="any" name="s${i}" value="${p.share}" required></label>`).join('')}</div>
+    <div class="actions" style="margin-top:14px"><button class="btn primary">حفظ</button></div></form>
+
   <section class="panel"><h2>الصفوف <button class="btn sm primary" onclick="classForm()">+ صف</button></h2>
     ${(s.classes || []).map((c, i) => { const n = active().filter(x => x.grade === c.name).length;
       return `<div class="list-row"><div><b>${esc(c.name)}</b> <span class="muted">${n} طالب${c.capacity ? ` من ${c.capacity}` : ''}${c.teacher ? ` · المعلمة: ${esc(c.teacher)}` : ''}</span></div>
@@ -651,6 +679,14 @@ VIEWS.settings = () => {
     <label class="f">تأكيد الجديدة<input type="password" name="confirm" required minlength="6" autocomplete="new-password"></label>
   </div><div class="actions" style="margin-top:14px"><button class="btn primary">تغيير كلمة المرور</button></div></form>`;
 };
+async function savePartners(e) {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  const list = partners().map((_, i) => ({ name: d['n' + i].trim(), share: +d['s' + i] }));
+  const total = list.reduce((a, p) => a + p.share, 0);
+  if (Math.abs(total - 100) > 0.01) return toast(`مجموع النسب ${total}٪ — يجب أن يكون 100٪`, true);
+  await act('PUT', '/api/settings', { partners: list }, 'تم حفظ نسب الشركاء');
+}
 async function saveSettings(e) {
   e.preventDefault();
   const d = Object.fromEntries(new FormData(e.target));

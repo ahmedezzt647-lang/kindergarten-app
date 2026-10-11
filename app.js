@@ -31,6 +31,7 @@ const Settings = mongoose.model('Settings', new S({
   currency: { type: String, default: 'ر.س' },
   halfMonthAfterDay: { type: Number, default: 10 },
   classes: [{ name: String, teacher: String, capacity: Number }],
+  partners: { type: [{ name: String, share: Number }], default: [{ name: 'احمد', share: 50 }, { name: 'عبدالله', share: 50 }] },
   expenseCategories: { type: [String], default: ['رواتب', 'إيجار', 'كهرباء وماء', 'أدوات تعليمية', 'صيانة', 'مواصلات', 'أخرى'] },
   passwordHash: String,
   receiptCounter: { type: Number, default: 1000 },
@@ -249,7 +250,7 @@ app.get('/api/all', wrap(async (req, res) => {
 
 // ---- الإعدادات ----
 app.put('/api/settings', wrap(async (req, res) => {
-  const allowed = ['schoolName', 'phone', 'address', 'vatNumber', 'currency', 'halfMonthAfterDay', 'classes', 'expenseCategories'];
+  const allowed = ['schoolName', 'phone', 'address', 'vatNumber', 'currency', 'halfMonthAfterDay', 'classes', 'expenseCategories', 'partners'];
   const upd = {}; for (const k of allowed) if (k in req.body) upd[k] = req.body[k];
   await Settings.updateOne({ key: 'main' }, { $set: upd });
   res.json({ ok: true });
