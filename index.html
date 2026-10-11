@@ -166,12 +166,11 @@
       try { await fetch(url, { method: 'DELETE' }); } catch(e) {}
     }
 
-    // المعادلة الحسابية المطابقة لطلبك بالحرف:
-    // 1. إذا كان الالتحاق بعد يوم 15 (مثل 15/9) -> شهر الالتحاق = نصف شهر (netMonthly / 2) = 100
-    // 2. إذا كان الالتحاق قبل يوم 16 -> شهر الالتحاق = شهر كامل (netMonthly)
-    // 3. الشهور الكاملة اللاحقة بين شهر الالتحاق والشهر السابق للحالي -> شهور كاملة (netMonthly لكل شهر)
-    // 4. الشهر الحالي (أكتوبر) -> يُضاف كاملاً كمقدمة (netMonthly) = 200
-    // الإجمالي = 100 + 200 = 300 ريال.
+    // معادلة ملف الإكسيل بحذافيرها:
+    // إذا كان يوم الالتحاق > 15 (منتصف الشهر) -> شهر الالتحاق = نصف الرسم (netMonthly / 2)
+    // إذا كان يوم الالتحاق <= 15 -> شهر الالتحاق = الرسم كاملاً (netMonthly)
+    // الشهور الكاملة بين شهر الالتحاق والشهر السابق للحالي = شهور كاملة
+    // الشهر الحالي (أكتوبر) = رسوم كاملة مقدماً
     function calculateStudentFinancials(s, booksList) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -191,20 +190,19 @@
       let descText = '';
 
       if (joinYear === nowYear && joinMonth === nowMonth) {
-        // التحاق في نفس الشهر الحالي
-        const partCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
-        totalTuition = Math.round(partCost);
+        const firstPart = joinDay > 15 ? (netMonthly / 2) : netMonthly;
+        totalTuition = Math.round(firstPart);
         descText = joinDay > 15 ? 'نصف الشهر الحالي' : 'الشهر الحالي كامل';
       } else {
-        // شهر الالتحاق الأول (بعد 15 = نصف شهر، 15 أو قبله = شهر كامل)
+        // 1. شهر الالتحاق (بعد 15 = نصف رسم، 15 أو قبله = رسم كامل)
         const firstMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
 
-        // عدد الشهور الكاملة تماماً بين شهر الالتحاق وبين الشهر السابق للشهر الحالي
+        // 2. الشهور الكاملة اللاحقة حتى الشهر السابق للحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
 
-        // رسوم الشهر الحالي (أكتوبر) كاملة مقدماً
+        // 3. الشهر الحالي (أكتوبر) مقدمةً
         const currentMonthCost = netMonthly;
 
         totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
