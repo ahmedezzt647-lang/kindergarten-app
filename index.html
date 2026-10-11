@@ -166,7 +166,9 @@
 
     function scrollToSection(secId) { document.getElementById(secId).scrollIntoView({ behavior: 'smooth' }); }
     
-    // دالة لحساب الرسوم: (أيام شهر الالتحاق بالنسب اليومية) + (رسوم الشهور الكاملة اللاحقة مقدمةً)
+    // دالة لحساب الرسوم بالقاعدة الثابتة الدقيقة:
+    // إذا التحق من منتصف الشهر (مثل 15) يُحسب نصف شهر ثابت (netMonthly / 2)
+    // ومع حلول أول الشهر الجديد يضاف الشهر الجديد كاملاً مقدمةً.
     function calculateStudentFinancials(s) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -187,26 +189,23 @@
 
       if (joinYear === nowYear && joinMonth === nowMonth) {
         // إذا كان التحاقه في نفس الشهر الحالي
-        const daysInMonth = new Date(nowYear, nowMonth + 1, 0).getDate();
-        const attendedDays = Math.max(1, (now.getDate() - joinDay) + 1);
-        totalTuition = Math.round((netMonthly / daysInMonth) * attendedDays);
-        descText = `${attendedDays} يوم من الشهر الحالي`;
+        const partMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
+        totalTuition = Math.round(partMonthCost);
+        descText = joinDay > 15 ? 'نصف الشهر الحالي' : 'الشهر الحالي كامل';
       } else {
-        // 1. حساب جزء شهر الالتحاق بناءً على الأيام المتبقية منه بنسبة صحيحة
-        const daysInJoinMonth = new Date(joinYear, joinMonth + 1, 0).getDate();
-        const firstMonthDays = Math.max(1, (daysInJoinMonth - joinDay) + 1);
-        const firstMonthCost = Math.round((netMonthly / daysInJoinMonth) * firstMonthDays);
+        // 1. شهر الالتحاق: إذا كان من منتصف الشهر (بعد يوم 15) يُحسب نصف شهر (100)، وإذا قبلها يُحسب شهراً كاملاً
+        const firstMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
 
-        // 2. عدد الشهور الكاملة بين شهر الالتحاق وبين الشهر السابق للشهر الحالي
+        // 2. عدد الشهور الكاملة اللاحقة بين شهر الالتحاق والشهر السابق للشهر الحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
 
-        // 3. مع حلول الشهر الجديد (مثل شهر 10)، تُضاف قيمة الشهر الجديد كاملة مسبقاً (مقدم)
+        // 3. مع دخول الشهر الجديد (مثل شهر 10)، تُضاف رسوم الشهر الجديد كاملة مقدمةً
         const currentMonthCost = netMonthly;
 
-        totalTuition = firstMonthCost + fullMonthsCost + currentMonthCost;
-        descText = `جزء ش.${joinMonth+1} + ${fullMonths} ش.كامل + ش.${nowMonth+1} مقدم`;
+        totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
+        descText = `نصف ش.${joinMonth+1} + ${fullMonths} ش.كامل + ش.${nowMonth+1} مقدم`;
       }
 
       const booksTotal = getStudentBooksTotal(s.id);
@@ -441,7 +440,7 @@
       const student = db.students.find(s => s.id === id);
       if(student) {
         student.paid = (parseFloat(student.paid) || 0) + parseFloat(amount);
-        db.payments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] });
+        db.payments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] );
         saveDb();
       }
     }
