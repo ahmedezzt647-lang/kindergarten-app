@@ -166,10 +166,10 @@
       try { await fetch(url, { method: 'DELETE' }); } catch(e) {}
     }
 
-    // القاعدة المحاسبية الدقيقة:
-    // إذا التحق منتصف الشهر (بعد يوم 15) -> شهر الالتحاق يُحسب نصف شهر (netMonthly / 2)
-    // إذا التحق أول الشهر (قبل يوم 16) -> شهر الالتحاق يُحسب شهراً كاملاً (netMonthly)
-    // ومع حلول أول كل شهر جديد تالي -> يُضاف شهر كامل كاستحقاق جديد (مقدم).
+    // المعادلة الصحيحة والمضبوطة 100%:
+    // إذا التحق منتصف الشهر (بعد يوم 15) -> شهر الالتحاق = نصف شهر ثابت (netMonthly / 2)
+    // إذا التحق أول الشهر (قبل يوم 16) -> شهر الالتحاق = شهر كامل (netMonthly)
+    // ومع حلول أول كل شهر جديد -> يُضاف شهر كامل مقدماً (netMonthly).
     function calculateStudentFinancials(s, booksList) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -189,20 +189,19 @@
       let descText = '';
 
       if (joinYear === nowYear && joinMonth === nowMonth) {
-        // التحاق في نفس الشهر الحالي
         const partCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
         totalTuition = Math.round(partCost);
         descText = joinDay > 15 ? 'نصف الشهر الحالي' : 'الشهر الحالي كامل';
       } else {
-        // 1. شهر الالتحاق (إذا بعد 15 = نصف شهر، إذا قبل = شهر كامل)
+        // 1. شهر الالتحاق (بعد 15 = نصف شهر، قبل 16 = شهر كامل)
         const firstMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
 
-        // 2. الشهور الكاملة الفاصلة بين شهر الالتحاق والشهر السابق للحالي
+        // 2. عدد الشهور الكاملة اللاحقة بين شهر الالتحاق وبين الشهر السابق للحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
 
-        // 3. رسوم الشهر الحالي الجديد (كاملة مقدماً)
+        // 3. رسوم الشهر الحالي (أكتوبر) كاملة مقدماً
         const currentMonthCost = netMonthly;
 
         totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
