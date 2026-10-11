@@ -234,6 +234,9 @@ app.get('/api/portal/:token', wrap(async (req, res) => {
 app.use(requireAuth);
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'views', 'index.html')));
 
+// تعديل البرنامج من الداخل عبر Claude (صفحة /updates)
+require('./dev')(app, wrap, newId, today);
+
 // تحميل كل البيانات دفعة واحدة
 app.get('/api/all', wrap(async (req, res) => {
   const s = await getSettings();

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تعديل البرنامج — روضة نور ومكة</title>
+<!-- صفحة مستقلة تماماً (بدون ملفات خارجية) حتى تعمل دائماً، حتى لو تعطلت الصفحة الرئيسية بسبب تعديل -->
+<style>
+  :root{--ink:#1B2A3A;--ink2:#4A5B6C;--ink3:#7D8B99;--palm:#1F7A5C;--palm2:#E3F1EB;--palm3:#145741;--rose:#C2413B;--rose2:#FBE7E5;--sun2:#FDF2DA;--mist:#EEF3F2;--line:#DCE5E3}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'IBM Plex Sans Arabic',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;background:var(--mist);color:var(--ink);line-height:1.6;font-size:15px}
+  header{background:var(--palm3);color:#fff;padding:22px 16px}
+  header .in,main{max-width:760px;margin:0 auto}
+  header h1{margin:0;font-size:24px} header a{color:#D6EBE2;font-size:14px}
+  main{padding:18px 16px 60px}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:16px}
+  h2{font-size:18px;margin:0 0 12px}
+  textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;resize:vertical}
+  textarea:focus{outline:none;border-color:var(--palm);box-shadow:0 0 0 3px var(--palm2)}
+  .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer;color:var(--ink)}
+  .btn.primary{background:var(--palm);border-color:var(--palm);color:#fff}
+  .btn.danger{color:var(--rose);border-color:#F0C9C6}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  .muted{color:var(--ink3);font-size:13px}
+  .note{background:var(--sun2);border-radius:12px;padding:12px 14px;font-size:14px}
+  .err{background:var(--rose2);color:var(--rose);border-radius:12px;padding:12px 14px;font-weight:600}
+  .ok{background:var(--palm2);color:var(--palm3);border-radius:12px;padding:12px 14px;font-weight:600}
+  .summary{white-space:pre-wrap;background:var(--mist);border-radius:12px;padding:14px;margin:8px 0}
+  .item{border-bottom:1px solid var(--mist);padding:12px 0;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .item:last-child{border-bottom:0}
+  .tag{display:inline-block;padding:1px 10px;border-radius:999px;font-size:12px;font-weight:600}
+  .t-applied{background:var(--palm2);color:var(--palm3)} .t-reverted{background:var(--mist);color:var(--ink2)} .t-revert{background:var(--sun2);color:#8A5A00}
+  .spin{display:inline-block;width:16px;height:16px;border:2px solid var(--palm2);border-top-color:var(--palm);border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
+  @keyframes s{to{transform:rotate(360deg)}}
+  ul{margin:6px 0;padding-inline-start:20px}
+</style>
+</head>
+<body>
+<header><div class="in"><h1>🛠️ تعديل البرنامج</h1><a href="/">← الرجوع إلى البرنامج</a></div></header>
+<main>
+  <div id="setup"></div>
+
+  <section class="panel">
+    <h2>ماذا تريد أن تغيّر في البرنامج؟</h2>
+    <textarea id="req" placeholder="مثال: أضف في جدول الطلاب عموداً يظهر فيه عدد أيام الغياب هذا الشهر"></textarea>
+    <p class="muted">اكتب بالتفصيل وبطريقتك. سيجهّز Claude التعديل ويعرضه عليك أولاً، ولن يُطبّق شيء إلا بعد موافقتك.</p>
+    <div class="row"><button class="btn primary" id="go">جهّز التعديل</button></div>
+    <div id="job" style="margin-top:14px"></div>
+  </section>
+
+  <section class="panel">
+    <h2>التعديلات السابقة</h2>
+    <p class="muted" style="margin-top:0">زر "تراجع" يعيد البرنامج كما كان قبل ذلك التعديل (ومعه أي تعديلات جاءت بعده). البيانات لا تتأثر.</p>
+    <div id="hist"><span class="spin"></span></div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 401) { location.href = '/login'; throw new Error('سجّل الدخول'); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'تعذر تنفيذ العملية');
+  return d;
+}
+
+async function setup() {
+  try {
+    const s = await api('GET', '/api/dev/status');
+    if (s.claude && s.github) { $('#setup').innerHTML = ''; return; }
+    $('#setup').innerHTML = `<section class="panel"><h2>خطوة أخيرة لتفعيل هذه الميزة</h2><div class="note">
+      أضف في Render ← خدمة rawda-app ← Environment المفاتيح التالية، ثم اضغط Save:<ul>
+      ${s.claude ? '' : '<li><b>ANTHROPIC_API_KEY</b>: من console.anthropic.com ← API Keys</li>'}
+      ${s.github ? '' : '<li><b>GITHUB_TOKEN</b>: من github.com ← Settings ← Developer settings ← Fine-grained tokens، بصلاحية Contents: Read and write على مستودع kindergarten-app</li>'}
+      </ul></div></section>`;
+    $('#go').disabled = true;
+  } catch (e) { $('#setup').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+let poll;
+$('#go').onclick = async () => {
+  const request = $('#req').value.trim();
+  if (request.length < 5) return alert('اكتب طلبك بوضوح');
+  $('#go').disabled = true;
+  try { const { id } = await api('POST', '/api/dev/propose', { request }); watch(id); }
+  catch (e) { $('#job').innerHTML = `<div class="err">${esc(e.message)}</div>`; $('#go').disabled = false; }
+};
+function watch(id) {
+  clearInterval(poll);
+  const tick = async () => {
+    let j;
+    try { j = await api('GET', '/api/dev/job/' + id); } catch (e) { clearInterval(poll); $('#job').innerHTML = `<div class="err">${esc(e.message)}</div>`; $('#go').disabled = false; return; }
+    if (j.status === 'working') { $('#job').innerHTML = `<p><span class="spin"></span> ${esc(j.stage)}… قد يستغرق ذلك دقيقة أو دقيقتين.</p>`; return; }
+    clearInterval(poll); $('#go').disabled = false;
+    if (j.status === 'error') $('#job').innerHTML = `<div class="err">${esc(j.error)}</div>`;
+    else if (j.status === 'question') $('#job').innerHTML = `<div class="note"><b>يحتاج Claude توضيحاً:</b><div class="summary">${esc(j.question)}</div>أضف التوضيح إلى طلبك أعلاه ثم اضغط "جهّز التعديل" مرة أخرى.</div>`;
+    else if (j.status === 'ready') $('#job').innerHTML = `
+      <h2>التعديل المقترح</h2><div class="summary">${esc(j.summary)}</div>
+      <p class="muted">الملفات: ${j.diff.map(d => `${esc(d.path)} (+${d.added} / −${d.removed})`).join('، ')}</p>
+      <div class="row"><button class="btn primary" onclick="apply('${j.id}', this)">طبّق التعديل</button><button class="btn" onclick="$('#job').innerHTML=''">إلغاء</button></div>`;
+    else if (j.status === 'applied') $('#job').innerHTML = `<div class="ok">تم التطبيق.</div>`;
+  };
+  tick(); poll = setInterval(tick, 3000);
+}
+async function apply(id, btn) {
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> جارٍ التطبيق';
+  try {
+    await api('POST', '/api/dev/apply/' + id);
+    $('#job').innerHTML = `<div class="ok">✅ تم حفظ التعديل. يُنشر الآن تلقائياً، وخلال دقيقتين تقريباً حدّث صفحة البرنامج لترى التغيير.<br>إذا لم يعجبك أو ظهرت مشكلة، اضغط "تراجع" بجانبه في الأسفل.</div>`;
+    $('#req').value = ''; history();
+  } catch (e) { btn.disabled = false; btn.textContent = 'طبّق التعديل'; $('#job').insertAdjacentHTML('beforeend', `<div class="err" style="margin-top:10px">${esc(e.message)}</div>`); }
+}
+async function revert(id, btn) {
+  if (!confirm('سيرجع البرنامج كما كان قبل هذا التعديل (ومعه أي تعديلات بعده). البيانات لا تتأثر. متابعة؟')) return;
+  btn.disabled = true;
+  try { await api('POST', '/api/dev/revert/' + id); alert('تم التراجع. خلال دقيقتين تقريباً يعود البرنامج كما كان.'); history(); }
+  catch (e) { btn.disabled = false; alert(e.message); }
+}
+async function history() {
+  try {
+    const list = await api('GET', '/api/dev/history');
+    const L = { applied: 'مطبّق', reverted: 'تم التراجع عنه', revert: 'تراجع' };
+    $('#hist').innerHTML = list.length ? list.map(c => `<div class="item"><div><b>${esc(c.request)}</b> <span class="tag t-${c.status}">${L[c.status] || c.status}</span>
+      <div class="muted">${esc(c.date)} · ${new Date(c.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</div>
+      ${c.summary ? `<div style="font-size:14px;margin-top:4px">${esc(c.summary)}</div>` : ''}</div>
+      ${c.status === 'applied' ? `<button class="btn danger" onclick="revert('${c.id}', this)">تراجع</button>` : ''}</div>`).join('')
+      : '<p class="muted">لا توجد تعديلات بعد.</p>';
+  } catch (e) { $('#hist').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+setup(); history();
+</script>
+</body>
+</html>
