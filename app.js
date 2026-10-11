@@ -36,7 +36,12 @@ const Settings = mongoose.model('Settings', new S({
   passwordHash: String,
   receiptCounter: { type: Number, default: 1000 },
   migrations: [String],
+  appearance: { type: S.Types.Mixed, default: {} }, // الألوان والخط والوضع الليلي وأرقام نسخ الصور
 }, opt));
+
+// صور الموقع (الشعار، صورة الرئيسية، خلفية الدخول) — تُخزَّن في القاعدة حتى لا تضيع مع إعادة النشر
+const IMAGE_KEYS = ['logo', 'banner', 'loginBg'];
+const Asset = mongoose.model('Asset', new S({ key: { type: String, unique: true }, mime: String, data: Buffer }, opt));
 
 const Student = mongoose.model('Student', new S({
   id: { type: String, index: true },
@@ -193,6 +198,19 @@ app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'views', 'logi
 app.get('/p/:token', (req, res) => res.sendFile(path.join(__dirname, 'views', 'portal.html')));
 app.get('/health', (req, res) => res.json({ ok: true, db: mongoose.connection.readyState === 1 }));
 
+// المظهر والصور: عامة لأن صفحة الدخول وبوابة ولي الأمر تحتاجها
+app.get('/api/appearance', wrap(async (req, res) => {
+  const s = await getSettings();
+  res.json({ ...(s.appearance || {}), schoolName: s.schoolName });
+}));
+app.get('/img/:key', wrap(async (req, res) => {
+  if (!IMAGE_KEYS.includes(req.params.key)) return res.sendStatus(404);
+  const a = await Asset.findOne({ key: req.params.key });
+  if (!a) return res.sendStatus(404);
+  res.setHeader('Content-Type', a.mime); res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // الرابط يتغير مع كل رفع (?v=)
+  res.send(a.data);
+}));
+
 app.post('/api/login', wrap(async (req, res) => {
   const ip = req.headers['x-forwarded-for'] || req.ip;
   const a = tooMany(ip);
@@ -255,6 +273,43 @@ app.get('/api/all', wrap(async (req, res) => {
   ]);
   const settings = s.toObject(); delete settings.passwordHash;
   res.json({ settings, students, payments, expenses, attendance, books, staff, notes, announcements, today: today() });
+}));
+
+// ---- المظهر ----
+const PALETTE_IDS = ['palm', 'blue', 'teal', 'purple', 'pink', 'orange', 'slate', 'custom'];
+const isColor = c => /^#[0-9a-fA-F]{6}$/.test(String(c || ''));
+app.put('/api/appearance', wrap(async (req, res) => {
+  const s = await getSettings();
+  const cur = { ...(s.appearance || {}) }, b = req.body || {};
+  if (PALETTE_IDS.includes(b.palette)) cur.palette = b.palette;
+  if (isColor(b.primary)) cur.primary = b.primary;
+  if (isColor(b.accent)) cur.accent = b.accent;
+  if (['normal', 'large', 'xlarge', 'huge'].includes(b.size)) cur.size = b.size;
+  if (['plex', 'tajawal', 'cairo', 'almarai', 'noto'].includes(b.font)) cur.font = b.font;
+  if (typeof b.dark === 'boolean') cur.dark = b.dark;
+  if (b.reset) { Object.keys(cur).forEach(k => k !== 'images' && delete cur[k]); }
+  s.appearance = cur; s.markModified('appearance'); await s.save();
+  res.json(cur);
+}));
+app.post('/api/assets/:key', wrap(async (req, res) => {
+  const key = req.params.key;
+  if (!IMAGE_KEYS.includes(key)) return res.status(400).json({ error: 'نوع صورة غير معروف' });
+  const m = /^data:(image\/(png|jpeg|webp));base64,(.+)$/.exec(String(req.body.dataUrl || ''));
+  if (!m) return res.status(400).json({ error: 'الملف ليس صورة صالحة' });
+  const data = Buffer.from(m[3], 'base64');
+  if (data.length > 2.5 * 1024 * 1024) return res.status(400).json({ error: 'الصورة كبيرة جداً' });
+  await Asset.updateOne({ key }, { $set: { key, mime: m[1], data } }, { upsert: true });
+  const s = await getSettings();
+  const ap = { ...(s.appearance || {}) }; ap.images = { ...(ap.images || {}), [key]: Date.now() };
+  s.appearance = ap; s.markModified('appearance'); await s.save();
+  res.json(ap);
+}));
+app.delete('/api/assets/:key', wrap(async (req, res) => {
+  await Asset.deleteOne({ key: req.params.key });
+  const s = await getSettings();
+  const ap = { ...(s.appearance || {}) }; ap.images = { ...(ap.images || {}) }; delete ap.images[req.params.key];
+  s.appearance = ap; s.markModified('appearance'); await s.save();
+  res.json(ap);
 }));
 
 // ---- الإعدادات ----

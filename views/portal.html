@@ -7,12 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/theme.js"></script>
 <style>
   body{background:var(--mist)}
   header{background:var(--palm-3);color:#fff;padding:28px 16px 64px}
   header .in,main{max-width:640px;margin:0 auto}
   header small{opacity:.8}
   header h1{font-size:28px;margin-top:6px}
+  .pcrest{width:44px;height:44px;border-radius:14px;background:var(--sun);color:var(--ink);display:grid;place-items:center;font-family:var(--kufi);font-size:22px;flex-shrink:0}
   main{padding:0 16px 40px;margin-top:-44px}
   .panel{background:var(--paper);border-radius:var(--r-lg);padding:20px;margin-bottom:14px;border:1px solid var(--line)}
   .panel h2{font-size:18px;margin-bottom:12px}
@@ -47,7 +49,7 @@ const typeIcon = { 'سلوك':'🌟', 'وجبات':'🍎', 'نوم':'😴', 'ت�
   const rate = d.attendance.length ? Math.round(presentCount / d.attendance.length * 100) : null;
   document.title = `${d.student.name} — ${d.school.name}`;
   document.getElementById('app').innerHTML = `
-  <header><div class="in"><small>${esc(d.school.name)}</small><h1>${esc(d.student.name)}</h1><small>${/^[\d٠-٩]+$/.test(d.student.grade||'') ? 'صف ' : ''}${esc(d.student.grade || '')}</small></div></header>
+  <header><div class="in"><div style="display:flex;gap:12px;align-items:center"><div class="crest pcrest">ن</div><small>${esc(d.school.name)}</small></div><h1>${esc(d.student.name)}</h1><small>${/^[\d٠-٩]+$/.test(d.student.grade||'') ? 'صف ' : ''}${esc(d.student.grade || '')}</small></div></header>
   <main>
     <section class="panel">
       <h2>الحساب المالي</h2>
@@ -82,6 +84,7 @@ const typeIcon = { 'سلوك':'🌟', 'وجبات':'🍎', 'نوم':'😴', 'ت�
 
     ${d.school.phone ? `<p style="text-align:center"><a class="btn wa" href="https://wa.me/${esc(d.school.phone.replace(/\D/g,'').replace(/^0/,'966'))}">تواصل مع الروضة عبر واتساب</a></p>` : ''}
   </main>`;
+  if (window.Theme) Theme.apply(window.APPEARANCE); // لإظهار شعار الروضة بعد بناء الصفحة
 })();
 </script>
 </body>

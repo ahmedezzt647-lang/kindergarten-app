@@ -9,7 +9,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const N = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const fmt = n => (Math.round(N(n) * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const cur = () => D?.settings?.currency || 'ر.س';
-const money = n => `<span class="num">${fmt(n)}</span> ${cur()}`;
+const money = n => `<span class="amt"><span class="num">${fmt(n)}</span> ${cur()}</span>`;
 const initial = name => (String(name || '؟').trim()[0] || '؟');
 const fmtDate = d => { if (!d) return '—'; const [y, m, dd] = String(d).split('-'); return dd ? `${+dd}/${+m}/${y}` : d; };
 const monthOf = d => String(d || '').slice(0, 7);
@@ -155,7 +155,9 @@ VIEWS.home = () => {
   const upcoming = D.announcements.filter(a => a.eventDate && a.eventDate >= today).sort((a, b) => a.eventDate.localeCompare(b.eventDate)).slice(0, 4);
   const hour = new Date().getHours();
 
+  const banner = window.APPEARANCE?.images?.banner;
   return `
+  ${banner ? `<div class="banner"><img src="/img/banner?v=${banner}" alt=""></div>` : ''}
   <div class="head"><div><h1>${hour < 12 ? 'صباح الخير' : 'مساء الخير'}</h1><p>${dayName(today)} · ${hijri(today)}</p></div>
     <div class="actions">${installPrompt && !isInstalled() ? '<button class="btn" onclick="installApp()">📲 تثبيت التطبيق</button>' : ''}<button class="btn primary" onclick="studentForm()">+ طالب جديد</button><button class="btn" onclick="paymentForm()">+ تسجيل دفعة</button></div></div>
 
@@ -291,17 +293,40 @@ VIEWS.students = () => {
     <select onchange="UI.stStatus=this.value;render()" aria-label="الحالة">${[['active', 'المستمرون'], ['inactive', 'المنقطعون'], ['all', 'الكل']].map(([v, l]) => `<option value="${v}" ${v === UI.stStatus ? 'selected' : ''}>${l}</option>`).join('')}</select>
   </div>
   <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>الصف</th><th>تاريخ الالتحاق</th><th>ولي الأمر</th><th>الرسم الشهري</th><th>المستحق</th><th>المدفوع</th><th>المتبقي</th><th>اليوم</th></tr></thead><tbody>
-  ${list.map(s => { const b = bal(s); const a = attOf(s.id, D.today);
+  ${studentRows(list)}
+  </tbody></table></div></section>`;
+};
+
+// صفوف جدول الطلاب مجمّعة حسب الصف، تحت كل صف سطر إجمالي، وفي النهاية الإجمالي العام
+function studentRows(list) {
+  if (!list.length) return `<tr><td colspan="9" class="empty">${D.students.length ? 'لا يوجد طلاب بهذه المواصفات' : 'لم تسجّل أي طالب بعد<br><button class="btn primary" onclick="studentForm()">أضف أول طالب</button>'}</td></tr>`;
+  const order = classes();
+  const groups = {};
+  list.forEach(s => (groups[s.grade || 'بدون صف'] ||= []).push(s));
+  const keys = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999) || a.localeCompare(b, 'ar'));
+  const T = { n: 0, fee: 0, due: 0, paid: 0, rem: 0 };
+  const row = s => { const b = bal(s); const a = attOf(s.id, D.today);
     return `<tr class="click ${s.status === 'inactive' ? 'dim' : ''}" onclick="openStudent('${s.id}')" tabindex="0" onkeydown="if(event.key==='Enter')openStudent('${s.id}')">
       <td><b>${esc(s.name)}</b>${s.status === 'inactive' ? ' <span class="tag warn">منقطع</span>' : ''}</td>
       <td>${esc(s.grade || '—')}</td><td class="num" style="white-space:nowrap">${esc(fmtDate(s.join_date))}</td><td>${esc(s.parent_name || '')}<div class="muted num">${esc(s.parent_phone || '')}</div></td>
       <td>${money(N(s.monthlyFee) - N(s.discount))}${N(s.discount) ? `<div class="muted">خصم ${fmt(s.discount)}</div>` : ''}</td>
       <td>${money(b.totalDue)}</td><td class="money-ok">${money(b.paid)}</td>
       <td class="${b.remaining > 0 ? 'money-bad' : 'money-ok'}">${money(b.remaining)}</td>
-      <td>${s.status === 'inactive' ? '—' : a ? `<span class="tag ${STATUS_TAG[a.status]}">${STATUS[a.status]}</span>` : '<span class="tag mute">—</span>'}</td></tr>`; }).join('')
-    || `<tr><td colspan="9" class="empty">${D.students.length ? 'لا يوجد طلاب بهذه المواصفات' : 'لم تسجّل أي طالب بعد<br><button class="btn primary" onclick="studentForm()">أضف أول طالب</button>'}</td></tr>`}
-  </tbody></table></div></section>`;
-};
+      <td>${s.status === 'inactive' ? '—' : a ? `<span class="tag ${STATUS_TAG[a.status]}">${STATUS[a.status]}</span>` : '<span class="tag mute">—</span>'}</td></tr>`; };
+  const sumRow = (label, t, cls) => `<tr class="${cls}"><td colspan="4"><b>${label}</b> <span class="muted">${t.n} طالب</span></td>
+    <td><b>${money(t.fee)}</b></td><td><b>${money(t.due)}</b></td><td class="money-ok"><b>${money(t.paid)}</b></td>
+    <td class="${t.rem > 0.009 ? 'money-bad' : 'money-ok'}"><b>${money(t.rem)}</b></td><td></td></tr>`;
+  let html = '';
+  for (const k of keys) {
+    const ss = groups[k].sort((a, b) => String(a.join_date || '9999').localeCompare(String(b.join_date || '9999')) || String(a.name).localeCompare(String(b.name), 'ar'));
+    const t = { n: ss.length, fee: 0, due: 0, paid: 0, rem: 0 };
+    ss.forEach(s => { const b = bal(s); t.fee += N(s.monthlyFee) - N(s.discount); t.due += b.totalDue; t.paid += b.paid; t.rem += b.remaining; });
+    Object.keys(T).forEach(x => T[x] += t[x]);
+    html += ss.map(row).join('') + sumRow(`إجمالي ${esc(k)}`, t, 'subtotal');
+  }
+  if (keys.length > 1) html += sumRow('الإجمالي العام', T, 'grandtotal');
+  return html;
+}
 
 function openStudent(id) {
   const s = studentById(id); if (!s) return;
@@ -728,7 +753,7 @@ VIEWS.reports = () => {
     <div class="tbl-wrap"><table><thead><tr><th>الصف</th><th>الطلاب</th><th>رسوم الشهر</th><th>المحصّل منها</th><th>المتبقي</th><th>نسبة التحصيل</th></tr></thead><tbody>
     ${Object.entries(cls).map(([k, c]) => `<tr><td><b>${esc(k)}</b></td><td class="num">${c.n}</td><td>${money(c.due)}</td><td class="money-ok">${money(c.covered)}</td><td class="${c.due - c.covered > 0.009 ? 'money-bad' : 'money-ok'}">${money(c.due - c.covered)}</td><td><span class="tag ${c.due && c.covered / c.due >= .9 ? 'ok' : 'warn'}">${c.due ? Math.round(c.covered / c.due * 100) : 100}٪</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا يوجد</td></tr>'}
     </tbody></table></div>
-    <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;color:var(--palm-3)">تفاصيل كل طالب في ${monthName(m)} (${rows.length})</summary>
+    <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;color:var(--palm-ink)">تفاصيل كل طالب في ${monthName(m)} (${rows.length})</summary>
     <div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الصف</th><th>رسوم الشهر</th><th>المحصّل منها</th><th>المتبقي</th><th>دفعه خلال الشهر</th></tr></thead><tbody>
     ${rows.map(r => `<tr class="click" onclick="openStudent('${r.s.id}')"><td><b>${esc(r.s.name)}</b>${monthOf(r.s.join_date) === m ? ` <span class="tag info">التحق ${esc(fmtDate(r.s.join_date))}</span>` : ''}</td><td>${esc(r.s.grade || '')}</td><td>${money(r.due)}</td><td class="money-ok">${money(r.covered)}</td><td class="${r.left > 0 ? 'money-bad' : 'money-ok'}">${money(r.left)}</td><td>${r.paidIn ? money(r.paidIn) : '—'}</td></tr>`).join('')}
     </tbody></table></div></details>
@@ -779,6 +804,87 @@ function csv(kind) {
   if (kind === 'payments') downloadCsv('الدفعات', [['رقم الإيصال', 'الطالب', 'المبلغ', 'الطريقة', 'التاريخ', 'ملاحظة'], ...D.payments.map(p => [p.receiptNo, p.studentName, p.amount, p.method, p.date, p.note])]);
   else if (kind === 'books') downloadCsv('الكتب', [['الطالب', 'الكتاب', 'السعر', 'المدفوع', 'الباقي', 'الحالة', 'تاريخ البيع', 'تاريخ السداد'], ...D.books.map(b => [b.studentName, b.title, b.price, N(b.paidAmount), N(b.price) - N(b.paidAmount), b.paid ? 'سدّد' : N(b.paidAmount) ? 'سدّد جزءاً' : 'لم يسدّد', b.date, b.paidDate || ''])]);
   else downloadCsv('المصروفات', [['البند', 'التصنيف', 'المبلغ', 'التاريخ', 'ملاحظة'], ...D.expenses.map(e => [e.title, e.category, e.amount, e.date, e.note])]);
+}
+
+/* ---------- المظهر ---------- */
+VIEWS.appearance = () => {
+  const a = { ...Theme.DEFAULTS, ...(window.APPEARANCE || {}) };
+  const pressed = c => `aria-pressed="${!!c}"`;
+  const imgs = a.images || {};
+  const slot = (key, title, hint, cls) => `<div class="imgslot">
+    <div class="pv ${cls || ''}">${imgs[key] ? `<img src="/img/${key}?v=${imgs[key]}" alt="">` : 'لا توجد صورة'}</div>
+    <div class="info"><b>${title}</b><div class="muted">${hint}</div></div>
+    <div class="actions"><label class="btn sm primary" style="cursor:pointer">${imgs[key] ? 'تغيير الصورة' : 'رفع صورة'}<input type="file" accept="image/*" hidden onchange="uploadImage('${key}', this)"></label>
+    ${imgs[key] ? `<button class="btn sm danger" onclick="removeImage('${key}')">حذف</button>` : ''}</div></div>`;
+  return `<div class="head"><div><h1>المظهر</h1><p>التغييرات تظهر فوراً وتُحفظ لك ولشريكك على كل الأجهزة</p></div>
+    <div class="actions"><button class="btn" onclick="resetAppearance()">رجوع للمظهر الأصلي</button></div></div>
+
+  <section class="panel"><h2>الألوان</h2>
+    <div class="swatches">${Theme.PALETTES.map(p => `<button class="swatch" ${pressed(a.palette === p.id)} onclick="setAppearance({palette:'${p.id}'})"><i><b style="background:${p.primary}"></b><b style="background:${p.accent}"></b></i>${p.name}</button>`).join('')}
+      <button class="swatch" ${pressed(a.palette === 'custom')} onclick="setAppearance({palette:'custom'})"><i><b style="background:${a.primary}"></b><b style="background:${a.accent}"></b></i>ألوان خاصة</button></div>
+    ${a.palette === 'custom' ? `<div class="grid g2" style="margin-top:14px;max-width:420px">
+      <label class="f">اللون الأساسي<input type="color" value="${a.primary}" style="height:46px;padding:4px" onchange="setAppearance({primary:this.value})"></label>
+      <label class="f">لون التمييز<input type="color" value="${a.accent}" style="height:46px;padding:4px" onchange="setAppearance({accent:this.value})"></label></div>` : ''}
+  </section>
+
+  <section class="panel"><h2>الشاشة</h2>
+    <p class="muted" style="margin:0 0 8px">الوضع</p>
+    <div class="opts"><button class="opt" ${pressed(!a.dark)} onclick="setAppearance({dark:false})">☀️ فاتح</button><button class="opt" ${pressed(a.dark)} onclick="setAppearance({dark:true})">🌙 داكن (ليلي)</button></div>
+    <p class="muted" style="margin:16px 0 8px">حجم الخط</p>
+    <div class="opts">${Theme.SIZES.map(z => `<button class="opt" ${pressed(a.size === z.id)} onclick="setAppearance({size:'${z.id}'})" style="font-size:${Math.round(15 * z.fs)}px">${z.name}</button>`).join('')}</div>
+    <p class="muted" style="margin:16px 0 8px">نوع الخط</p>
+    <div class="opts">${Theme.FONTS.map(f => `<button class="opt" ${pressed(a.font === f.id)} onclick="setAppearance({font:'${f.id}'})" style="font-family:${f.family}">${f.name}</button>`).join('')}</div>
+  </section>
+
+  <section class="panel"><h2>صور الموقع</h2>
+    ${slot('logo', 'شعار الروضة', 'يظهر في القائمة الجانبية وصفحة الدخول وبوابة ولي الأمر. يفضّل صورة مربعة.', 'logo')}
+    ${slot('banner', 'صورة الصفحة الرئيسية', 'صورة عريضة تظهر أعلى الصفحة الرئيسية، مثل صورة الروضة أو الأطفال.')}
+    ${slot('loginBg', 'خلفية صفحة الدخول', 'تظهر خلف مربع كلمة المرور.')}
+    <p class="muted">تُصغَّر الصور تلقائياً قبل الرفع حتى يبقى البرنامج سريعاً.</p>
+  </section>`;
+};
+let appearanceSave = null;
+function setAppearance(patch) {
+  const a = Theme.apply({ ...(window.APPEARANCE || {}), ...patch });
+  render();
+  clearTimeout(appearanceSave);
+  appearanceSave = setTimeout(async () => { const r = await api('PUT', '/api/appearance', a); if (r) toast('تم حفظ المظهر'); }, 400);
+}
+async function resetAppearance() {
+  if (!confirm('الرجوع للألوان والخط الأصلية؟ (الصور تبقى كما هي)')) return;
+  const r = await api('PUT', '/api/appearance', { reset: true });
+  if (r) { Theme.apply(r); render(); toast('رجع المظهر الأصلي'); }
+}
+// تصغير الصورة في المتصفح قبل رفعها
+function shrinkImage(file, maxW, maxH, type) {
+  return new Promise((ok, fail) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, maxW / img.width, maxH / img.height);
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const g = c.getContext('2d');
+      if (type === 'image/jpeg') { g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); }
+      g.drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      ok(c.toDataURL(type, 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); fail(new Error('تعذر قراءة الصورة')); };
+    img.src = url;
+  });
+}
+async function uploadImage(key, input) {
+  const file = input.files && input.files[0]; if (!file) return;
+  if (!file.type.startsWith('image/')) return toast('اختر ملف صورة', true);
+  toast('جارٍ رفع الصورة…');
+  try {
+    const dataUrl = key === 'logo' ? await shrinkImage(file, 512, 512, 'image/png') : await shrinkImage(file, 1600, 1000, 'image/jpeg');
+    const r = await api('POST', `/api/assets/${key}`, { dataUrl });
+    if (r) { Theme.apply(r); render(); toast('تم رفع الصورة'); }
+  } catch (e) { toast(e.message, true); }
+}
+async function removeImage(key) {
+  if (!confirm('حذف هذه الصورة؟')) return;
+  const r = await api('DELETE', `/api/assets/${key}`);
+  if (r) { Theme.apply(r); render(); toast('تم حذف الصورة'); }
 }
 
 /* ---------- الإعدادات ---------- */

@@ -9,6 +9,7 @@
 - `app.js` الخادم والنماذج ومسارات `/api` (كلها خلف تسجيل الدخول عدا `/api/login` و `/api/portal/:token`).
 - `shared/finance.js` حساب الرسوم (خادم + متصفح).
 - `public/admin.js` كل شاشات اللوحة (`VIEWS.*`) — مساعدات: `esc`, `money`, `fmt`, `modal`, `act`, `api`.
+- `public/theme.js` المظهر (ألوان/حجم خط `--fs`/خط/وضع ليلي/صور) من `settings.appearance`، والصور في مجموعة `assets` وتُقدَّم من `/img/<logo|banner|loginBg>`.
 - `views/portal.html` بوابة ولي الأمر. التطبيق (PWA): `public/manifest.webmanifest` و `public/sw.js` (يُقدَّم من `/sw.js`) و `public/icons/`. `dev.js` + `views/updates.html` تعديل البرنامج من الداخل (لا تُعدَّل ذاتياً).
 
 ## قواعد الحساب (اتفق عليها صاحب الروضة)
