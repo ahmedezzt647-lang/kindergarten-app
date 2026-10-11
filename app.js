@@ -183,6 +183,8 @@ async function migrate() {
 // ====== الصفحات العامة ======
 app.use('/shared', express.static(path.join(__dirname, 'shared')));
 app.use('/assets', express.static(path.join(__dirname, 'public')));
+// تطبيق قابل للتثبيت (PWA): عامل الخدمة يجب أن يُقدَّم من الجذر
+app.get('/sw.js', (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(__dirname, 'public', 'sw.js')); });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'views', 'login.html')));
 app.get('/p/:token', (req, res) => res.sendFile(path.join(__dirname, 'views', 'portal.html')));
 app.get('/health', (req, res) => res.json({ ok: true, db: mongoose.connection.readyState === 1 }));

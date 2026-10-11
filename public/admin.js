@@ -118,7 +118,7 @@ VIEWS.home = () => {
 
   return `
   <div class="head"><div><h1>${hour < 12 ? 'صباح الخير' : 'مساء الخير'}</h1><p>${dayName(today)} · ${hijri(today)}</p></div>
-    <div class="actions"><button class="btn primary" onclick="studentForm()">+ طالب جديد</button><button class="btn" onclick="paymentForm()">+ تسجيل دفعة</button></div></div>
+    <div class="actions">${installPrompt && !isInstalled() ? '<button class="btn" onclick="installApp()">📲 تثبيت التطبيق</button>' : ''}<button class="btn primary" onclick="studentForm()">+ طالب جديد</button><button class="btn" onclick="paymentForm()">+ تسجيل دفعة</button></div></div>
 
   <div class="figures">
     <button class="fig" onclick="go('attendance')"><span>حضور اليوم</span><b class="num">${present} / ${act_.length}</b><small>${marked < act_.length ? `بقي ${act_.length - marked} بدون تسجيل` : 'اكتمل التسجيل'}</small></button>
@@ -689,6 +689,7 @@ function csv(kind) {
 VIEWS.settings = () => {
   const s = D.settings;
   return `<div class="head"><div><h1>الإعدادات</h1></div><div class="actions"><button class="btn danger" onclick="logout()">تسجيل الخروج</button></div></div>
+  ${installPanel()}
   <form class="panel" onsubmit="saveSettings(event)"><h2>بيانات الروضة</h2><div class="grid g2">
     <label class="f">اسم الروضة<input name="schoolName" value="${esc(s.schoolName)}"></label>
     <label class="f">جوال الروضة (واتساب)<input name="phone" value="${esc(s.phone || '')}"></label>
@@ -786,5 +787,26 @@ $('#modal-form').addEventListener('submit', async e => {
 });
 
 /* ---------- البدء ---------- */
+/* ---------- التطبيق (PWA) ---------- */
+let installPrompt = null;
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (D) render(); });
+window.addEventListener('appinstalled', () => { installPrompt = null; toast('تم تثبيت التطبيق على جهازك'); if (D) render(); });
+function installPanel() {
+  if (isInstalled()) return '';
+  if (installPrompt) return `<section class="panel"><h2>تثبيت البرنامج كتطبيق</h2><p class="muted" style="margin-top:0">أضف البرنامج إلى الشاشة الرئيسية ليفتح كتطبيق بملء الشاشة. مجاني ولا يحتاج متجر.</p><button class="btn primary" onclick="installApp()">تثبيت التطبيق</button></section>`;
+  if (isIOS()) return `<section class="panel"><h2>تثبيت البرنامج كتطبيق على الآيفون</h2><ol style="margin:0;padding-inline-start:20px;line-height:2">
+    <li>افتح البرنامج في متصفح <b>Safari</b></li><li>اضغط زر <b>المشاركة</b> (المربع والسهم ⬆️) في أسفل الشاشة</li><li>اختر <b>إضافة إلى الشاشة الرئيسية</b> ثم <b>إضافة</b></li></ol></section>`;
+  return `<section class="panel"><h2>تثبيت البرنامج كتطبيق</h2><p class="muted" style="margin:0">على أندرويد: افتح البرنامج في <b>Chrome</b>، ثم القائمة ⋮ ← <b>تثبيت التطبيق</b> أو <b>إضافة إلى الشاشة الرئيسية</b>. على الكمبيوتر: أيقونة التثبيت في شريط العنوان في Chrome أو Edge.</p></section>`;
+}
+async function installApp() {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null; render();
+}
+
 VIEW = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'home';
 load();
