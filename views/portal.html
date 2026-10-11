@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>بوابة ولي الأمر</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  body{background:var(--mist)}
+  header{background:var(--palm-3);color:#fff;padding:28px 16px 64px}
+  header .in,main{max-width:640px;margin:0 auto}
+  header small{opacity:.8}
+  header h1{font-size:28px;margin-top:6px}
+  main{padding:0 16px 40px;margin-top:-44px}
+  .panel{background:var(--paper);border-radius:var(--r-lg);padding:20px;margin-bottom:14px;border:1px solid var(--line)}
+  .panel h2{font-size:18px;margin-bottom:12px}
+  .bal{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+  .bal b{display:block;font-size:22px;font-family:var(--kufi)}
+  .bal span{font-size:13px;color:var(--ink-2)}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--mist)}
+  .row:last-child{border-bottom:0}
+  .muted{color:var(--ink-3);font-size:13px}
+  .days{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+  .day{aspect-ratio:1;border-radius:6px;background:var(--mist)}
+  .day.present{background:var(--palm)} .day.late{background:var(--sun)} .day.absent{background:var(--rose)} .day.excused{background:var(--sky)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2);margin-top:10px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-left:5px;vertical-align:middle}
+  .empty{color:var(--ink-3);text-align:center;padding:12px}
+  .err{text-align:center;padding:60px 16px}
+</style>
+</head>
+<body>
+<div id="app"><p class="err">جارٍ التحميل…</p></div>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const typeIcon = { 'سلوك':'🌟', 'وجبات':'🍎', 'نوم':'😴', 'تعلّم':'📘', 'صحة':'🩺', 'عام':'📝' };
+(async () => {
+  const tok = location.pathname.split('/').pop();
+  let d;
+  try { const r = await fetch('/api/portal/' + encodeURIComponent(tok)); d = await r.json(); if (!r.ok) throw new Error(d.error); }
+  catch (e) { document.getElementById('app').innerHTML = `<p class="err">${esc(e.message || 'الرابط غير صالح')}<br><span class="muted">تواصل مع إدارة الروضة للحصول على رابط جديد.</span></p>`; return; }
+  const c = d.school.currency || 'ر.س';
+  const att = d.attendance.slice().reverse().slice(-30);
+  const presentCount = d.attendance.filter(a => a.status === 'present' || a.status === 'late').length;
+  const rate = d.attendance.length ? Math.round(presentCount / d.attendance.length * 100) : null;
+  document.title = `${d.student.name} — ${d.school.name}`;
+  document.getElementById('app').innerHTML = `
+  <header><div class="in"><small>${esc(d.school.name)}</small><h1>${esc(d.student.name)}</h1><small>${/^[\d٠-٩]+$/.test(d.student.grade||'') ? 'صف ' : ''}${esc(d.student.grade || '')}</small></div></header>
+  <main>
+    <section class="panel">
+      <h2>الحساب المالي</h2>
+      <div class="bal">
+        <div><b class="num">${d.balance.totalDue}</b><span>المستحق (${c})</span></div>
+        <div><b class="num money-ok">${d.balance.paid}</b><span>المدفوع</span></div>
+        <div><b class="num ${d.balance.remaining > 0 ? 'money-bad' : 'money-ok'}">${d.balance.remaining}</b><span>المتبقي</span></div>
+      </div>
+      <p class="muted" style="margin:12px 0 0">الرسوم: ${esc(d.balance.desc)}${d.balance.booksTotal ? ` · كتب ${d.balance.booksTotal} ${c}` : ''}</p>
+    </section>
+
+    ${d.announcements.length ? `<section class="panel"><h2>إعلانات الروضة</h2>${d.announcements.map(a => `
+      <div class="row"><div><b>${esc(a.title)}</b>${a.body ? `<div>${esc(a.body)}</div>` : ''}${a.eventDate ? `<div class="muted">موعد الفعالية: ${esc(a.eventDate)}</div>` : ''}</div><span class="muted">${esc(a.date)}</span></div>`).join('')}</section>` : ''}
+
+    <section class="panel">
+      <h2>الحضور${rate !== null ? ` <span class="tag ok">${rate}٪</span>` : ''}</h2>
+      ${att.length ? `<div class="days">${att.map(a => `<div class="day ${a.status}" title="${esc(a.date)}"></div>`).join('')}</div>
+      <div class="legend"><span><i style="background:var(--palm)"></i>حاضر</span><span><i style="background:var(--sun)"></i>متأخر</span><span><i style="background:var(--rose)"></i>غائب</span><span><i style="background:var(--sky)"></i>بعذر</span></div>
+      ${d.attendance[0] ? `<p class="muted" style="margin:10px 0 0">آخر تسجيل: ${esc(d.attendance[0].date)}${d.attendance[0].checkIn ? ` · دخول ${esc(d.attendance[0].checkIn)}` : ''}${d.attendance[0].checkOut ? ` · خروج ${esc(d.attendance[0].checkOut)}` : ''}</p>` : ''}`
+      : '<p class="empty">لا توجد سجلات حضور بعد</p>'}
+    </section>
+
+    <section class="panel"><h2>ملاحظات المعلمة</h2>
+      ${d.notes.length ? d.notes.map(n => `<div class="row"><div>${typeIcon[n.type] || '📝'} ${esc(n.text)}${n.mood ? ` <span class="tag mute">${esc(n.mood)}</span>` : ''}</div><span class="muted">${esc(n.date)}</span></div>`).join('') : '<p class="empty">لا توجد ملاحظات بعد</p>'}
+    </section>
+
+    <section class="panel"><h2>سجل الدفعات</h2>
+      ${d.payments.length ? d.payments.map(p => `<div class="row"><div>إيصال رقم ${esc(p.receiptNo)} <span class="muted">· ${esc(p.method)}</span></div><b class="num">${p.amount} ${c}</b><span class="muted">${esc(p.date)}</span></div>`).join('') : '<p class="empty">لا توجد دفعات مسجلة</p>'}
+    </section>
+
+    ${d.books.length ? `<section class="panel"><h2>الكتب</h2>${d.books.map(b => `<div class="row"><div>${esc(b.title)}</div><b class="num">${esc(b.price)} ${c}</b><span class="muted">${esc(b.date)}</span></div>`).join('')}</section>` : ''}
+
+    ${d.school.phone ? `<p style="text-align:center"><a class="btn wa" href="https://wa.me/${esc(d.school.phone.replace(/\D/g,'').replace(/^0/,'966'))}">تواصل مع الروضة عبر واتساب</a></p>` : ''}
+  </main>`;
+})();
+</script>
+</body>
+</html>
