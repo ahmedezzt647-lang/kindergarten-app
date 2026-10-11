@@ -94,7 +94,7 @@
       <div id="books-details-box" class="details-box"><div class="section-title orange"><span>📚 سجل مبيعات الكتب</span><button class="btn-toggle" onclick="hideBox('books-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>#</th><th>اسم الطالب</th><th>الكتاب</th><th>السعر</th><th>التاريخ</th><th>حذف</th></tr></thead><tbody id="books-table"></tbody></table></div></div>
       <div id="classes-details-box" class="details-box"><div class="section-title teal"><span>🏫 تحليل إيرادات الصفوف</span><button class="btn-toggle" onclick="hideBox('classes-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>اسم الصف</th><th>عدد الطلاب</th><th>المستحق</th><th>المقبوض</th><th>المتبقي</th></tr></thead><tbody id="classes-table"></tbody></table></div></div>
       <div id="attendance-details-box" class="details-box"><div class="section-title"><span>📅 سجل الحضور والغياب اليومي</span><button class="btn-toggle" onclick="hideBox('attendance-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>اسم الطفل</th><th>الصف</th><th>حالة الحضور</th><th>وقت التسجيل</th><th>تسجيل</th></tr></thead><tbody id="attendance-table"></tbody></table></div></div>
-      <div id="students-details-box" class="details-box"><div class="section-title"><span>👶 قائمة الطلاب</span><button class="btn-toggle" onclick="hideBox('students-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الصف</th><th>الهاتف</th><th>تاريخ الالتحاق</th><th>المدة المحسوبة</th><th>تفصيل الرسوم</th><th>المستحق الكلي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody id="students-table-detail"></tbody></table></div></div>
+      <div id="students-details-box" class="details-box"><div class="section-title"><span>👶 قائمة الطلاب</span><button class="btn-toggle" onclick="hideBox('students-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الصف</th><th>الهاتف</th><th>تاريخ الالتحاق</th><th>فترة الحساب</th><th>تفصيل الرسوم</th><th>المستحق الكلي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody id="students-table-detail"></tbody></table></div></div>
       <div id="revenue-details-box" class="details-box"><div class="section-title green"><span>💰 سجل المقبوضات الإيرادات</span><button class="btn-toggle" onclick="hideBox('revenue-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>#</th><th>رقم الإيصال</th><th>اسم الطالب</th><th>المبلغ</th><th>التاريخ</th><th>حذف</th></tr></thead><tbody id="revenue-table"></tbody></table></div></div>
       <div id="expense-details-box" class="details-box"><div class="section-title red"><span>📋 البيان التفصيلي للمصروفات</span><button class="btn-toggle" onclick="hideBox('expense-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>#</th><th>البند</th><th>المبلغ</th><th>التاريخ</th><th>حذف</th></tr></thead><tbody id="expenses-table"></tbody></table></div></div>
 
@@ -139,7 +139,7 @@
       <div class="table-responsive"><table><thead><tr><th>اسم الصف</th><th>عدد الطلاب المستمرين</th><th>المستحق</th><th>المقبوض</th><th>المتبقي</th></tr></thead><tbody id="classes-table-main"></tbody></table></div>
 
       <div id="sec-students-list" class="section-title"><span>📜 جدول الطلاب الرئيسي</span></div>
-      <div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الصف</th><th>الهاتف</th><th>تاريخ الالتحاق</th><th>المدة المحسوبة</th><th>تفصيل الرسوم والكتب</th><th>المستحق الكلي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody id="students-table-main"></tbody></table></div>
+      <div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الصف</th><th>الهاتف</th><th>تاريخ الالتحاق</th><th>فترة الحساب</th><th>تفصيل الرسوم والكتب</th><th>المستحق الكلي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody id="students-table-main"></tbody></table></div>
     </div>
   </div>
 
@@ -166,7 +166,7 @@
 
     function scrollToSection(secId) { document.getElementById(secId).scrollIntoView({ behavior: 'smooth' }); }
     
-    // دالة لحساب الرسوم بدقة بناءً على الشهر الجزئي (أيام شهر الالتحاق) + الشهور الكاملة اللاحقة
+    // دالة لحساب الرسوم بدقة: شهر الالتحاق الجزئي + رسوم الشهور الكاملة اللاحقة مقدمةً مع بداية كل شهر
     function calculateStudentFinancials(s) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -181,34 +181,32 @@
       
       const nowYear = now.getFullYear();
       const nowMonth = now.getMonth();
-      const nowDay = now.getDate();
 
       let totalTuition = 0;
       let descText = '';
 
-      // إذا كان تاريخ الالتحاق في نفس الشهر الحالي
       if (joinYear === nowYear && joinMonth === nowMonth) {
+        // إذا كان في نفس شهر الالتحاق
         const daysInMonth = new Date(nowYear, nowMonth + 1, 0).getDate();
-        const attendedDays = Math.max(1, (nowDay - joinDay) + 1);
+        const attendedDays = Math.max(1, (now.getDate() - joinDay) + 1);
         totalTuition = Math.round((netMonthly / daysInMonth) * attendedDays);
         descText = `${attendedDays} يوم من الشهر الحالي`;
       } else {
-        // حساب الأيام المتبقية في شهر الالتحاق الأول
+        // 1. حساب الأيام المتبقية من شهر الالتحاق الأول
         const daysInJoinMonth = new Date(joinYear, joinMonth + 1, 0).getDate();
         const firstMonthDays = Math.max(1, (daysInJoinMonth - joinDay) + 1);
         const firstMonthCost = (netMonthly / daysInJoinMonth) * firstMonthDays;
 
-        // حساب عدد الشهور الكاملة بين شهر الالتحاق والشهر الحالي
+        // 2. عدد الشهور الكاملة التي تلت شهر الالتحاق وحتى الشهر الحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
 
-        // حساب أجزاء الشهر الحالي إذا كنا في منتصفه
-        const currentMonthDaysInMonth = new Date(nowYear, nowMonth + 1, 0).getDate();
-        const currentMonthCost = (netMonthly / currentMonthDaysInMonth) * nowDay;
+        // 3. مع حلول أول يوم في الشهر الحالي (1 في الشهر)، تُضاف رسوم الشهر الجديد كاملة مقدماً
+        const currentMonthCost = netMonthly;
 
         totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
-        descText = `ش.جزئي + ${fullMonths} ش.كامل + ${nowDay} يوم`;
+        descText = `جزء ش.9 + ${fullMonths} ش.كامل + ش.10 كامل`;
       }
 
       const booksTotal = getStudentBooksTotal(s.id);
