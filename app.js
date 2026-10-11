@@ -30,14 +30,21 @@ const Settings = mongoose.model('Settings', new S({
   phone: String, address: String, vatNumber: String,
   currency: { type: String, default: 'ر.س' },
   halfMonthAfterDay: { type: Number, default: 10 },
-  classes: [{ name: String, teacher: String, capacity: Number }],
+  classes: [{ name: String, teacher: String, capacity: Number, tracks: [String] }], // tracks: مستويات الخطة الدراسية للصف
   partners: { type: [{ name: String, share: Number }], default: [{ name: 'احمد', share: 50 }, { name: 'عبدالله', share: 50 }] },
   expenseCategories: { type: [String], default: ['رواتب', 'إيجار', 'شراء كتب', 'كهرباء وماء', 'أدوات تعليمية', 'صيانة', 'مواصلات', 'أخرى'] },
   passwordHash: String,
   receiptCounter: { type: Number, default: 1000 },
   migrations: [String],
-  appearance: { type: S.Types.Mixed, default: {} }, // الألوان والخط والوضع الليلي وأرقام نسخ الصور
+  appearance: { type: S.Types.Mixed, default: {} },
+  academic: { start: { type: String, default: '2026-09-06' }, weeks: { type: Number, default: 34 } }, // أول أحد في العام الدراسي وعدد أسابيع الدراسة // الألوان والخط والوضع الليلي وأرقام نسخ الصور
 }, opt));
+
+// ====== القسم التعليمي ======
+// إنجاز المعلم لمهمة اليوم (مادة واحدة لمستوى واحد في يوم واحد)
+const TeachLog = mongoose.model('TeachLog', new S({ date: { type: String, index: true }, track: String, subject: String, done: Boolean, note: String }, opt));
+// تعديل موضوع أسبوع في الخطة (يتقدم على الخطة المقترحة في shared/curriculum.js)
+const PlanEdit = mongoose.model('PlanEdit', new S({ track: String, subject: String, week: Number, topic: String }, opt));
 
 // صور الموقع (الشعار، صورة الرئيسية، خلفية الدخول) — تُخزَّن في القاعدة حتى لا تضيع مع إعادة النشر
 const IMAGE_KEYS = ['logo', 'banner', 'loginBg'];
@@ -264,15 +271,42 @@ require('./dev')(app, wrap, newId, today);
 // تحميل كل البيانات دفعة واحدة
 app.get('/api/all', wrap(async (req, res) => {
   const s = await getSettings();
-  const [students, payments, expenses, attendance, books, staff, notes, announcements] = await Promise.all([
+  const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
+  const [students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits] = await Promise.all([
     Student.find().sort({ name: 1 }), Payment.find().sort({ date: -1, createdAt: -1 }),
     Expense.find().sort({ date: -1, createdAt: -1 }),
     Attendance.find({ date: { $gte: new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10) } }),
     Book.find().sort({ date: -1 }), Staff.find().sort({ name: 1 }),
     Note.find().sort({ date: -1, createdAt: -1 }).limit(500), Announcement.find().sort({ date: -1 }),
+    TeachLog.find({ date: { $gte: since } }), PlanEdit.find(),
   ]);
   const settings = s.toObject(); delete settings.passwordHash;
-  res.json({ settings, students, payments, expenses, attendance, books, staff, notes, announcements, today: today() });
+  res.json({ settings, students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits, today: today() });
+}));
+
+// ---- التعليم ----
+app.post('/api/teach/log', wrap(async (req, res) => {
+  const { date, track, subject } = req.body;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || !track || !subject) return res.status(400).json({ error: 'بيانات المهمة ناقصة' });
+  const set = {};
+  if (typeof req.body.done === 'boolean') set.done = req.body.done;
+  if (typeof req.body.note === 'string') set.note = req.body.note.slice(0, 500);
+  const doc = await TeachLog.findOneAndUpdate({ date, track, subject }, { $set: set }, { upsert: true, new: true });
+  res.json(doc);
+}));
+app.put('/api/plan/edit', wrap(async (req, res) => {
+  const { track, subject } = req.body, week = parseInt(req.body.week);
+  if (!track || !subject || !(week >= 1)) return res.status(400).json({ error: 'بيانات ناقصة' });
+  const topic = String(req.body.topic || '').trim();
+  if (!topic) { await PlanEdit.deleteOne({ track, subject, week }); return res.json({ ok: true, reset: true }); }
+  res.json(await PlanEdit.findOneAndUpdate({ track, subject, week }, { $set: { topic: topic.slice(0, 300) } }, { upsert: true, new: true }));
+}));
+app.put('/api/academic', wrap(async (req, res) => {
+  const s = await getSettings();
+  const start = String(req.body.start || ''), weeks = parseInt(req.body.weeks);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return res.status(400).json({ error: 'تاريخ غير صالح' });
+  s.academic = { start, weeks: weeks >= 10 && weeks <= 52 ? weeks : 34 }; await s.save();
+  res.json(s.academic);
 }));
 
 // ---- المظهر ----

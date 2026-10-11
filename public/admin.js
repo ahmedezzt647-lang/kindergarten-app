@@ -176,6 +176,8 @@ VIEWS.home = () => {
       <section class="panel"><h2>أعلى المتأخرين في السداد ${debtors.length > 5 ? `<button class="btn sm ghost" onclick="UI.finTab='debts';go('finance')">عرض الكل</button>` : ''}</h2>
         ${debtors.length ? debtors.slice(0, 5).map(({ s, b }) => `<div class="list-row"><div><b>${esc(s.name)}</b><div class="muted">${esc(s.grade || '')}</div></div><div class="actions"><span class="money-bad">${money(b.remaining)}</span>${s.parent_phone ? `<a class="btn sm wa" target="_blank" rel="noopener" href="${reminderLink(s, b)}">تذكير</a>` : ''}</div></div>`).join('') : '<p class="empty">لا توجد مبالغ متأخرة 🎉</p>'}
       </section>
+      ${teachClasses().length && dayIdx(D.today) <= 4 ? `<section class="panel"><h2>التعليم اليوم <button class="btn sm ghost" onclick="UI.teachTab='today';UI.teachDate=D.today;go('teach')">فتح المهام</button></h2>
+        ${teachClasses().map(c => { const s = dayStats(c, D.today); return `<div class="list-row"><span>${esc(c)}</span><span class="tag ${s.done === s.total && s.total ? 'ok' : s.done ? 'warn' : 'mute'}">${s.done}/${s.total} مهمة</span></div>`; }).join('')}</section>` : ''}
       <section class="panel"><h2>الدخل والمصروف — آخر 6 أشهر</h2>${chart6()}
         <div class="board-legend" style="margin-top:10px"><span><i style="background:var(--palm)"></i>مقبوضات</span><span><i style="background:var(--rose)"></i>مصروفات</span></div></section>
       <section class="panel"><h2>فعاليات قادمة <button class="btn sm ghost" onclick="annForm()">+ فعالية</button></h2>
@@ -806,6 +808,145 @@ function csv(kind) {
   else downloadCsv('المصروفات', [['البند', 'التصنيف', 'المبلغ', 'التاريخ', 'ملاحظة'], ...D.expenses.map(e => [e.title, e.category, e.amount, e.date, e.note])]);
 }
 
+/* ---------- التعليم: الخطة الدراسية ومهام المعلم اليومية ---------- */
+const TEACH_DAYS = ['تمهيد وشرح', 'تدريب موجّه', 'نشاط عملي', 'تطبيق في الكتاب والكراسة', 'مراجعة وتقييم قصير'];
+const DAY_NAMES = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+// أنشطة مقترحة لكل نوع مادة ولكل يوم من أيام الأسبوع (الأحد → الخميس)
+const ACTIVITIES = {
+  arabic: [['اعرض صورة أو قصة قصيرة تمهّد للموضوع', 'اشرح بنطق واضح وأمثلة من كلمات يعرفها الأطفال'], ['تدريب جماعي ثم فردي على النطق والقراءة', 'بطاقات الكلمات والحروف'], ['لعبة: ابحث عن الحرف/الكلمة في الصور', 'تشكيل الحرف بالصلصال أو الكتابة على الرمل'], ['حل تدريبات الكتاب', 'نسخ في الكراسة مع متابعة مسك القلم'], ['إملاء أو قراءة قصيرة لكل طالب', 'سجّل من يحتاج متابعة في الملاحظات اليومية']],
+  math: [['ابدأ بموقف من الحياة (عدّ أشياء في الفصل)', 'اشرح المفهوم بالمكعبات أو الأصابع'], ['أمثلة على السبورة يحلها الطلاب معك', 'تدريب شفهي سريع'], ['لعبة حسابية جماعية أو مسابقة فرق', 'استخدام أدوات محسوسة (أعواد، خرز، نقود)'], ['حل تمارين الكتاب', 'واجب قصير في الكراسة'], ['اختبار قصير من 3–5 أسئلة', 'إعادة شرح لمن أخطأ']],
+  english: [['Warm-up song or chant', 'Introduce new words with flashcards / pictures'], ['Listen and repeat, then pair practice', 'Point-and-say game'], ['Game: Simon says / memory cards', 'Role-play a short dialogue'], ['Student book and workbook exercises', 'Trace / write the new words'], ['Quick oral quiz', 'Review the week’s words with a song']],
+  discover: [['سؤال مثير للتفكير عن موضوع الأسبوع', 'عرض صور أو فيديو قصير'], ['نقاش جماعي وربط الموضوع بحياة الطفل', 'قراءة نص الكتاب معاً'], ['تجربة بسيطة أو نشاط فني (رسم، تلوين، مجسّم)', 'العمل في مجموعات صغيرة'], ['أنشطة الكتاب وورقة عمل', 'تقديم كل مجموعة لما صنعته'], ['أسئلة تقييم شفهية', 'ركن عرض أعمال الأطفال']],
+  science: [['سؤال استقصائي يفتح الدرس', 'شرح المفاهيم بالرسوم والنماذج'], ['قراءة الدرس ومناقشة الأفكار الرئيسة', 'خريطة مفاهيم على السبورة'], ['تجربة عملية أو عرض توضيحي', 'تسجيل الملاحظات والنتائج'], ['حل أسئلة الكتاب وكراسة النشاط', 'ربط الدرس بالحياة اليومية'], ['تقويم قصير', 'مراجعة المفاهيم الصعبة']],
+  quran: [['قراءة المعلم للآيات/الموضوع قراءة نموذجية', 'شرح المعنى بأسلوب مبسط'], ['ترديد جماعي ثم فردي', 'تصحيح النطق والتجويد'], ['نشاط: قصة أو تمثيل للقيمة المستفادة', 'مسابقة حفظ بين المجموعات'], ['تطبيق أسئلة الكتاب', 'كتابة القيمة المستفادة'], ['تسميع فردي', 'تسجيل مستوى الحفظ لكل طالب']],
+  islamic: [['تمهيد بموقف أو قصة', 'شرح الدرس وأدلته'], ['مناقشة وأسئلة توجيهية', 'استخراج الأحكام والفوائد'], ['نشاط تطبيقي أو تمثيل عملي', 'عمل جماعي'], ['حل أسئلة الكتاب', 'تلخيص الدرس'], ['تقويم قصير', 'ربط الدرس بالسلوك اليومي']],
+  social: [['تمهيد بخريطة أو صورة', 'شرح الأفكار الرئيسة'], ['قراءة ومناقشة', 'استخراج المفاهيم'], ['نشاط: خريطة صمّاء أو خط زمني', 'بحث قصير في مجموعات'], ['حل أسئلة الكتاب', 'تلخيص بالخرائط الذهنية'], ['تقويم قصير', 'مراجعة']],
+  digital: [['شرح المهارة على جهاز العرض', 'خطوات مكتوبة على السبورة'], ['تطبيق موجّه خطوة بخطوة', 'متابعة كل طالب'], ['مهمة عملية على الجهاز', 'العمل في ثنائيات'], ['أسئلة الكتاب', 'حفظ العمل وتنظيم الملفات'], ['تقييم عملي قصير', 'عرض أفضل الأعمال']],
+};
+const acad = () => ({ start: '2026-09-06', weeks: 34, ...(D.settings.academic || {}) });
+function weekOf(date) {
+  const a = acad(); const d = new Date(date + 'T12:00:00'), s = new Date(a.start + 'T12:00:00');
+  return Math.floor((d - s) / (7 * 864e5)) + 1;
+}
+const dayIdx = date => new Date(date + 'T12:00:00').getDay(); // 0 الأحد … 6 السبت
+const addDays = (date, n) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+function nextSchoolDay(date, dir) { let d = date; do { d = addDays(d, dir); } while (dayIdx(d) > 4); return d; }
+function tracksFor(cls) {
+  const c = (D.settings.classes || []).find(x => x.name === cls);
+  return (c && c.tracks && c.tracks.length ? c.tracks : Curriculum.DEFAULT_CLASS_TRACKS[cls]) || [];
+}
+const teachClasses = () => classes().filter(c => tracksFor(c).length);
+function topicFor(track, subject, week) {
+  const e = D.planEdits.find(p => p.track === track && p.subject === subject && p.week === week);
+  if (e) return { text: e.topic, edited: true };
+  const sub = Curriculum.TRACKS[track].subjects.find(s => s.name === subject);
+  return { text: Curriculum.unitForWeek(sub.units, week, acad().weeks) || '—', edited: false };
+}
+const logOf = (date, track, subject) => D.teachLogs.find(l => l.date === date && l.track === track && l.subject === subject);
+function dayStats(cls, date) {
+  if (dayIdx(date) > 4) return { done: 0, total: 0 };
+  let done = 0, total = 0;
+  tracksFor(cls).forEach(t => Curriculum.TRACKS[t].subjects.forEach(s => { total++; if (logOf(date, t, s.name)?.done) done++; }));
+  return { done, total };
+}
+
+VIEWS.teach = () => {
+  const tabs = [['today', 'مهام اليوم'], ['plan', 'الخطة السنوية'], ['progress', 'متابعة الإنجاز'], ['setup', 'إعداد العام الدراسي']];
+  UI.teachTab ||= 'today';
+  return `<div class="head"><div><h1>التعليم</h1><p>الخطة الدراسية ومهام المعلمين اليومية</p></div>
+    <div class="actions"><button class="btn" onclick="print()">طباعة</button></div></div>
+  <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${UI.teachTab === k}" onclick="UI.teachTab='${k}';render()">${l}</button>`).join('')}</div>
+  ${TEACH[UI.teachTab]()}`;
+};
+const TEACH = {
+  today() {
+    const list = teachClasses();
+    if (!list.length) return '<section class="panel"><p class="empty">لا توجد صفوف مربوطة بخطة دراسية. اربطها من الإعدادات ← الصفوف.</p></section>';
+    let date = UI.teachDate || D.today;
+    if (dayIdx(date) > 4) date = nextSchoolDay(date, 1);
+    UI.teachDate = date;
+    if (!list.includes(UI.teachClass)) UI.teachClass = list[0];
+    const cls = UI.teachClass, week = weekOf(date), di = dayIdx(date), a = acad();
+    const st = dayStats(cls, date);
+    const head = `<div class="filters" style="align-items:center">
+      <button class="btn" style="flex:0" onclick="UI.teachDate=nextSchoolDay(UI.teachDate,-1);render()" aria-label="اليوم السابق">→</button>
+      <input type="date" value="${date}" onchange="UI.teachDate=this.value;render()" aria-label="التاريخ">
+      <button class="btn" style="flex:0" onclick="UI.teachDate=nextSchoolDay(UI.teachDate,1);render()" aria-label="اليوم التالي">←</button>
+      ${date !== D.today ? `<button class="btn" style="flex:0" onclick="UI.teachDate=D.today;render()">اليوم</button>` : ''}
+    </div>
+    <div class="tabs" role="tablist">${list.map(c => { const s = dayStats(c, date); return `<button role="tab" aria-selected="${c === cls}" onclick="UI.teachClass='${esc(c)}';render()">${esc(c)} <span class="tag ${s.done === s.total && s.total ? 'ok' : 'mute'}">${s.done}/${s.total}</span></button>`; }).join('')}</div>`;
+    if (week < 1 || week > a.weeks) return head + `<section class="panel"><p class="empty">هذا التاريخ خارج العام الدراسي (يبدأ ${fmtDate(a.start)} لمدة ${a.weeks} أسبوعاً). عدّل البداية من "إعداد العام الدراسي".</p></section>`;
+    return head + `<section class="panel"><h2>${esc(cls)} — ${DAY_NAMES[di]} ${fmtDate(date)} <span class="muted">الأسبوع ${week} من ${a.weeks} · ${TEACH_DAYS[di]}</span></h2>
+      <div style="height:10px;background:var(--mist);border-radius:99px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:${st.total ? st.done / st.total * 100 : 0}%;background:var(--palm)"></div></div>
+      <p class="muted" style="margin:0">أنجزت ${st.done} من ${st.total} مهمة اليوم</p></section>
+    ${tracksFor(cls).map(t => { const T = Curriculum.TRACKS[t];
+      return `<section class="panel"><h2>${esc(T.name)} <span class="tag mute">منهج ${esc(T.system)}</span></h2>
+      ${T.subjects.map(s => { const tp = topicFor(t, s.name, week), lg = logOf(date, t, s.name), acts = (ACTIVITIES[s.type] || ACTIVITIES.discover)[di];
+        return `<div class="task ${lg?.done ? 'done' : ''}">
+          <label class="chk"><input type="checkbox" ${lg?.done ? 'checked' : ''} onchange="teachDone('${t}','${esc(s.name)}',this.checked)"><span></span></label>
+          <div class="body"><div class="subj">${esc(s.name)}</div>
+            <div class="topic">${esc(tp.text)}${tp.edited ? ' <span class="tag info">معدّل</span>' : ''}</div>
+            <div class="what"><b>مهمة اليوم: ${TEACH_DAYS[di]}</b><ul>${acts.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+            <input class="note" placeholder="ملاحظة المعلم (اختياري): ماذا تم؟ من يحتاج متابعة؟" value="${esc(lg?.note || '')}" onchange="teachNote('${t}','${esc(s.name)}',this.value)">
+          </div></div>`; }).join('')}
+      </section>`; }).join('')}`;
+  },
+  plan() {
+    const tracks = Object.keys(Curriculum.TRACKS);
+    UI.planTrack ||= tracksFor(teachClasses()[0] || '')[0] || tracks[0];
+    const t = UI.planTrack, T = Curriculum.TRACKS[t], a = acad(), cw = weekOf(D.today);
+    return `<div class="filters"><select onchange="UI.planTrack=this.value;render()" aria-label="المستوى">${tracks.map(k => `<option value="${k}" ${k === t ? 'selected' : ''}>${esc(Curriculum.TRACKS[k].name)}</option>`).join('')}</select></div>
+    <section class="panel"><h2>الخطة السنوية — ${esc(T.name)} <span class="muted">اضغط على أي موضوع لتعديله</span></h2>
+    <div class="tbl-wrap"><table class="plan"><thead><tr><th>الأسبوع</th>${T.subjects.map(s => `<th>${esc(s.name)}</th>`).join('')}</tr></thead><tbody>
+    ${Array.from({ length: a.weeks }, (_, i) => i + 1).map(w => `<tr${w === cw ? ' class="now"' : ''}><td class="num"><b>${w}</b><div class="muted">${fmtDate(addDays(a.start, (w - 1) * 7))}</div></td>
+      ${T.subjects.map(s => { const tp = topicFor(t, s.name, w); return `<td class="click-cell${tp.edited ? ' edited' : ''}" onclick="editTopic('${t}','${esc(s.name)}',${w})">${esc(tp.text)}</td>`; }).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted">خطة مقترحة مبنية على هيكل المنهج ${esc(T.system === 'سعودي' ? 'السعودي' : 'المصري')} ومقسّمة على ${a.weeks} أسبوعاً. طابِقها مع توزيع الوزارة وعدّل ما يلزم؛ الموضوعات المعدّلة مظللة.</p></section>`;
+  },
+  progress() {
+    const list = teachClasses(); const days = []; let d = dayIdx(D.today) > 4 ? nextSchoolDay(D.today, -1) : D.today;
+    for (let i = 0; i < 10; i++) { days.unshift(d); d = nextSchoolDay(d, -1); }
+    return `<section class="panel"><h2>إنجاز المهام في آخر 10 أيام دراسية</h2><div class="tbl-wrap"><table><thead><tr><th>الصف</th>${days.map(x => `<th class="num">${DAY_NAMES[dayIdx(x)].slice(0, 3)}<div class="muted">${fmtDate(x).slice(0, -5)}</div></th>`).join('')}<th>النسبة</th></tr></thead><tbody>
+    ${list.map(c => { let dn = 0, tt = 0; const cells = days.map(x => { const s = dayStats(c, x); dn += s.done; tt += s.total; const r = s.total ? s.done / s.total : 0;
+        return `<td><span class="tag ${r === 1 ? 'ok' : r > 0 ? 'warn' : 'mute'}">${s.done}/${s.total}</span></td>`; }).join('');
+      return `<tr><td><b>${esc(c)}</b></td>${cells}<td><b>${tt ? Math.round(dn / tt * 100) : 0}٪</b></td></tr>`; }).join('')}
+    </tbody></table></div></section>
+    <section class="panel"><h2>آخر ملاحظات المعلمين</h2>${D.teachLogs.filter(l => l.note).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30).map(l => `<div class="list-row"><div><b>${esc(Curriculum.TRACKS[l.track]?.short || l.track)} — ${esc(l.subject)}</b><div>${esc(l.note)}</div></div><span class="muted">${esc(fmtDate(l.date))}</span></div>`).join('') || '<p class="empty">لا توجد ملاحظات بعد</p>'}</section>`;
+  },
+  setup() {
+    const a = acad();
+    return `<form class="panel" onsubmit="saveAcademic(event)"><h2>العام الدراسي</h2><div class="grid g2" style="max-width:520px">
+      <label class="f">أول يوم دراسة (يُفضّل يوم أحد)<input type="date" name="start" value="${a.start}" required></label>
+      <label class="f">عدد أسابيع الدراسة في السنة<input type="number" name="weeks" min="10" max="52" value="${a.weeks}" required></label></div>
+      <p class="muted">الأسبوع الحالي حسب هذا الإعداد: <b>${weekOf(D.today)}</b>. إذا تأخرتم أو تقدمتم في الخطة، غيّر تاريخ البداية حتى يطابق الأسبوع الحالي ما تدرّسونه.</p>
+      <div class="actions"><button class="btn primary">حفظ</button></div></form>
+    <section class="panel"><h2>الصفوف ومستوياتها</h2>${classes().map(c => `<div class="list-row"><b>${esc(c)}</b><span>${tracksFor(c).map(t => `<span class="tag info">${esc(Curriculum.TRACKS[t].name)}</span>`).join(' ') || '<span class="muted">غير مربوط بخطة</span>'}</span></div>`).join('')}
+    <p class="muted">لتغيير مستويات صف: الإعدادات ← الصفوف ← تعديل.</p></section>`;
+  },
+};
+async function teachDone(track, subject, done) {
+  const date = UI.teachDate, l = logOf(date, track, subject);
+  if (l) l.done = done; else D.teachLogs.push({ date, track, subject, done });
+  render();
+  await api('POST', '/api/teach/log', { date, track, subject, done });
+}
+async function teachNote(track, subject, note) {
+  const date = UI.teachDate, l = logOf(date, track, subject);
+  if (l) l.note = note; else D.teachLogs.push({ date, track, subject, note });
+  if (await api('POST', '/api/teach/log', { date, track, subject, note })) toast('تم حفظ الملاحظة');
+}
+function editTopic(track, subject, week) {
+  const tp = topicFor(track, subject, week);
+  const v = prompt(`${Curriculum.TRACKS[track].name} — ${subject}\nموضوع الأسبوع ${week}:\n(اتركه فارغاً للرجوع للخطة المقترحة)`, tp.text);
+  if (v === null) return;
+  act('PUT', '/api/plan/edit', { track, subject, week, topic: v }, v.trim() ? 'تم تعديل موضوع الأسبوع' : 'رجع للخطة المقترحة');
+}
+async function saveAcademic(e) {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  await act('PUT', '/api/academic', d, 'تم حفظ العام الدراسي');
+}
+
 /* ---------- المظهر ---------- */
 VIEWS.appearance = () => {
   const a = { ...Theme.DEFAULTS, ...(window.APPEARANCE || {}) };
@@ -939,11 +1080,13 @@ function classForm(i) {
     <label class="f">اسم الصف *<input name="name" required value="${esc(c.name || '')}" placeholder="مثال: روضة 1"></label>
     <label class="f">المعلمة<input name="teacher" value="${esc(c.teacher || '')}" list="teachers"><datalist id="teachers">${D.staff.map(x => `<option value="${esc(x.name)}">`).join('')}</datalist></label>
     <label class="f">السعة<input type="number" min="0" name="capacity" value="${c.capacity || ''}"></label></div>
+    <fieldset style="margin-top:14px"><legend>مستويات الخطة الدراسية لهذا الصف</legend><div class="opts">
+      ${Object.entries(Curriculum.TRACKS).map(([k, T]) => `<label class="opt" style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="tr_${k}" ${(i !== undefined ? tracksFor(c.name) : []).includes(k) ? 'checked' : ''} style="width:auto">${esc(T.name)}</label>`).join('')}</div></fieldset>
     ${i !== undefined ? '<p class="muted">تغيير اسم الصف يُحدّث أسماء صفوف الطلاب تلقائياً.</p>' : ''}
     <div class="modal-actions"><button class="btn primary" value="ok">حفظ</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
     async data => {
       const list = [...(D.settings.classes || [])];
-      const item = { name: data.name.trim(), teacher: data.teacher, capacity: +data.capacity || undefined };
+      const item = { name: data.name.trim(), teacher: data.teacher, capacity: +data.capacity || undefined, tracks: Object.keys(Curriculum.TRACKS).filter(k => data['tr_' + k] === 'on') };
       const old = i !== undefined ? list[i].name : null;
       if (i !== undefined) list[i] = item; else list.push(item);
       const r = await api('PUT', '/api/settings', { classes: list });

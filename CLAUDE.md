@@ -10,6 +10,7 @@
 - `shared/finance.js` حساب الرسوم (خادم + متصفح).
 - `public/admin.js` كل شاشات اللوحة (`VIEWS.*`) — مساعدات: `esc`, `money`, `fmt`, `modal`, `act`, `api`.
 - `public/theme.js` المظهر (ألوان/حجم خط `--fs`/خط/وضع ليلي/صور) من `settings.appearance`، والصور في مجموعة `assets` وتُقدَّم من `/img/<logo|banner|loginBg>`.
+- `shared/curriculum.js` الخطة الدراسية المقترحة لكل مستوى (kg1, kg2, g1, g2, g3 مصري؛ m1, m2 سعودي) وربط الصفوف بالمستويات. تعديلات الأسابيع في `planedits`، وإنجاز المعلم في `teachlogs`، وبداية العام في `settings.academic`. شاشة `VIEWS.teach`.
 - `views/portal.html` بوابة ولي الأمر. التطبيق (PWA): `public/manifest.webmanifest` و `public/sw.js` (يُقدَّم من `/sw.js`) و `public/icons/`. `dev.js` + `views/updates.html` تعديل البرنامج من الداخل (لا تُعدَّل ذاتياً).
 
 ## قواعد الحساب (اتفق عليها صاحب الروضة)
