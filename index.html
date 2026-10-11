@@ -139,7 +139,7 @@
       <div class="table-responsive"><table><thead><tr><th>اسم الصف</th><th>عدد الطلاب المستمرين</th><th>المستحق</th><th>المقبوض</th><th>المتبقي</th></tr></thead><tbody id="classes-table-main"></tbody></table></div>
 
       <div id="sec-students-list" class="section-title"><span>📜 جدول الطلاب الرئيسي</span></div>
-      <div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الصف</th><th>الهاتف</th><th>تاريخ الالتحاق</th><th>فترة الحساب</th><th>تفصيل الرسوم والكتب</th><th>المستحق الكلي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody id="students-table-main"></tbody></table></div>
+      <div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الصف</th><th>الهاتف</th><th>تاريخ الالتحاق</th><th>فترة الحساب</th><th>تفصيل الرسوم والكتب</th><th>المستحق الكلي</th><th>The المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody id="students-table-main"></tbody></table></div>
     </div>
   </div>
 
@@ -166,10 +166,10 @@
       try { await fetch(url, { method: 'DELETE' }); } catch(e) {}
     }
 
-    // المعادلة الصحيحة المحسوبة بدقة تامة:
-    // 1. شهر الالتحاق: إذا كان بعد يوم 15 -> نصف شهر (netMonthly / 2). إذا كان قبل 16 -> شهر كامل.
-    // 2. الشهور اللاحقة الكاملة الفاصلة -> شهور كاملة (netMonthly لكل شهر).
-    // 3. الشهر الحالي (أكتوبر) -> يُضاف كاملاً كمقدمة.
+    // المعادلة المالية الصارمة والمضبوطة تماماً:
+    // إذا التحق بعد يوم 15 في الشهر -> شهر الالتحاق = نصف شهر (netMonthly / 2)
+    // إذا التحق من يوم 1 إلى 15 -> شهر الالتحاق = شهر كامل (netMonthly)
+    // ومع حلول أول كل شهر جديد (مثل أكتوبر) -> يُضاف شهر كامل مقدماً.
     function calculateStudentFinancials(s, booksList) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -194,15 +194,15 @@
         totalTuition = Math.round(partCost);
         descText = joinDay > 15 ? 'نصف الشهر الحالي' : 'الشهر الحالي كامل';
       } else {
-        // شهر الالتحاق الأول (إذا بعد 15 = نصف شهر، إذا قبل = شهر كامل)
+        // شهر الالتحاق (إذا بعد 15 = نصف شهر، إذا 15 أو قبله = شهر كامل)
         const firstMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
 
-        // الشهور الكاملة بين شهر الالتحاق والشهر السابق للشهر الحالي
+        // الشهور الكاملة تماماً بين شهر الالتحاق والشهر الذي يسبق الشهر الحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
 
-        // الشهر الحالي مقدمةً
+        // الشهر الحالي (أكتوبر) مقدمةً
         const currentMonthCost = netMonthly;
 
         totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
