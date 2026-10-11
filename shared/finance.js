@@ -35,8 +35,9 @@
     const t = calcTuition(s, opts);
     const booksTotal = (books || []).filter(b => b.studentId === s.id).reduce((a, b) => a + num(b.price), 0);
     const paid = (payments || []).filter(p => p.studentId === s.id).reduce((a, p) => a + num(p.amount), 0);
-    const totalDue = t.tuition + booksTotal;
-    return { tuition: t.tuition, desc: t.desc, net: t.net, booksTotal, totalDue, paid, remaining: totalDue - paid };
+    const oneTime = num(s.oneTimeDiscount);
+    const totalDue = Math.round((t.tuition + booksTotal - oneTime) * 100) / 100;
+    return { tuition: t.tuition, desc: t.desc, net: t.net, booksTotal, oneTime, totalDue, paid, remaining: Math.round((totalDue - paid) * 100) / 100 };
   }
 
   const api = { calcTuition, studentBalance, num };

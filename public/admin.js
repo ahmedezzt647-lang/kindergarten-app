@@ -270,7 +270,7 @@ function openStudent(id) {
     ${s.allergies || s.medical_notes ? `<div class="health">⚠️ ${esc([s.allergies && 'حساسية: ' + s.allergies, s.medical_notes].filter(Boolean).join(' — '))}</div>` : ''}
 
     <div class="figures" style="grid-template-columns:repeat(3,1fr)">
-      <div class="fig"><span>المستحق</span><b>${fmt(b.totalDue)}</b><small>${esc(b.desc)}${b.booksTotal ? ` + كتب ${fmt(b.booksTotal)}` : ''}</small></div>
+      <div class="fig"><span>المستحق</span><b>${fmt(b.totalDue)}</b><small>${esc(b.desc)}${b.booksTotal ? ` + كتب ${fmt(b.booksTotal)}` : ''}${b.oneTime ? ` − خصم ${fmt(b.oneTime)}${s.oneTimeDiscountNote ? ' (' + esc(s.oneTimeDiscountNote) + ')' : ''}` : ''}</small></div>
       <div class="fig"><span>المدفوع</span><b class="money-ok">${fmt(b.paid)}</b><small>${pays.length} دفعة</small></div>
       <div class="fig"><span>المتبقي</span><b class="${b.remaining > 0 ? 'money-bad' : 'money-ok'}">${fmt(b.remaining)}</b><small>${rate !== null ? `حضور ${rate}٪` : ''}</small></div>
     </div>
@@ -336,6 +336,8 @@ function studentForm(id) {
       <label class="f">تاريخ الالتحاق<input type="date" name="join_date" value="${v('join_date') || D.today}"></label>
       <label class="f">الرسم الشهري *<input type="number" min="0" name="monthlyFee" required value="${v('monthlyFee')}"></label>
       <label class="f">خصم شهري<input type="number" min="0" name="discount" value="${v('discount') || 0}"></label>
+      <label class="f">خصم لمرة واحدة<input type="number" min="0" step="any" name="oneTimeDiscount" value="${v('oneTimeDiscount') || 0}"></label>
+      <label class="f">سبب الخصم<input name="oneTimeDiscountNote" value="${v('oneTimeDiscountNote')}" placeholder="مثال: تسوية أيام سبتمبر"></label>
       ${id ? '' : `<label class="f">الدفعة الأولى<input type="number" min="0" name="firstPayment" value="0"></label>
       <label class="f">طريقة الدفع<select name="method">${['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'].map(m => `<option>${m}</option>`).join('')}</select></label>`}
     </div><p class="muted">الالتحاق حتى يوم ${D.settings.halfMonthAfterDay || 10} من الشهر يُحسب شهراً كاملاً، وبعده يُحسب بالأيام (الرسم ÷ 30 × الأيام المتبقية من الشهر).</p></fieldset>
@@ -483,8 +485,9 @@ function statement(id) {
     <table><tr><th>البيان</th><th>مدين</th><th>دائن</th><th>التاريخ</th></tr>
     <tr><td>رسوم دراسية (${esc(b.desc)})</td><td>${fmt(b.tuition)}</td><td></td><td>منذ ${esc(s.join_date)}</td></tr>
     ${books.map(x => `<tr><td>كتاب: ${esc(x.title)}</td><td>${fmt(x.price)}</td><td></td><td>${esc(x.date)}</td></tr>`).join('')}
+    ${b.oneTime ? `<tr><td>خصم${s.oneTimeDiscountNote ? ': ' + esc(s.oneTimeDiscountNote) : ''}</td><td></td><td>${fmt(b.oneTime)}</td><td></td></tr>` : ''}
     ${pays.map(p => `<tr><td>دفعة — إيصال ${p.receiptNo}</td><td></td><td>${fmt(p.amount)}</td><td>${esc(p.date)}</td></tr>`).join('')}
-    <tr><th>الإجمالي</th><th>${fmt(b.totalDue)}</th><th>${fmt(b.paid)}</th><th></th></tr></table>
+    <tr><th>الإجمالي</th><th>${fmt(b.tuition + b.booksTotal)}</th><th>${fmt(b.paid + b.oneTime)}</th><th></th></tr></table>
     <p class="big">الرصيد المتبقي: ${fmt(b.remaining)} ${cur()}</p>`);
 }
 

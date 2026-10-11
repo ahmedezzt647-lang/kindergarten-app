@@ -42,6 +42,7 @@ const Student = mongoose.model('Student', new S({
   name: String, grade: String, gender: String, birth_date: String,
   parent_name: String, parent_phone: String, parent_phone2: String,
   join_date: String, monthlyFee: String, discount: { type: String, default: '0' },
+  oneTimeDiscount: { type: String, default: '0' }, oneTimeDiscountNote: String,
   paid: { type: String, default: '0' }, // قديم — للترحيل فقط
   status: { type: String, default: 'active' }, inactive_date: String,
   allergies: String, medical_notes: String, emergency_contact: String, authorized_pickup: String,
@@ -263,7 +264,7 @@ app.put('/api/settings/password', wrap(async (req, res) => {
 
 // ---- الطلاب ----
 const studentFields = ['name', 'grade', 'gender', 'birth_date', 'parent_name', 'parent_phone', 'parent_phone2', 'join_date',
-  'monthlyFee', 'discount', 'allergies', 'medical_notes', 'emergency_contact', 'authorized_pickup', 'notes'];
+  'monthlyFee', 'discount', 'oneTimeDiscount', 'oneTimeDiscountNote', 'allergies', 'medical_notes', 'emergency_contact', 'authorized_pickup', 'notes'];
 const pick = (body, fields) => { const o = {}; for (const f of fields) if (f in body) o[f] = typeof body[f] === 'string' ? body[f].trim() : body[f]; return o; };
 
 app.post('/api/students', wrap(async (req, res) => {
