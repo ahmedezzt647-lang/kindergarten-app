@@ -166,7 +166,7 @@
 
     function scrollToSection(secId) { document.getElementById(secId).scrollIntoView({ behavior: 'smooth' }); }
     
-    // دالة لحساب الرسوم بدقة: شهر الالتحاق الجزئي + رسوم الشهور الكاملة اللاحقة مقدمةً مع بداية كل شهر
+    // دالة لحساب الرسوم: (أيام شهر الالتحاق بالنسب اليومية) + (رسوم الشهور الكاملة اللاحقة مقدمةً)
     function calculateStudentFinancials(s) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -186,27 +186,27 @@
       let descText = '';
 
       if (joinYear === nowYear && joinMonth === nowMonth) {
-        // إذا كان في نفس شهر الالتحاق
+        // إذا كان التحاقه في نفس الشهر الحالي
         const daysInMonth = new Date(nowYear, nowMonth + 1, 0).getDate();
         const attendedDays = Math.max(1, (now.getDate() - joinDay) + 1);
         totalTuition = Math.round((netMonthly / daysInMonth) * attendedDays);
         descText = `${attendedDays} يوم من الشهر الحالي`;
       } else {
-        // 1. حساب الأيام المتبقية من شهر الالتحاق الأول
+        // 1. حساب جزء شهر الالتحاق بناءً على الأيام المتبقية منه بنسبة صحيحة
         const daysInJoinMonth = new Date(joinYear, joinMonth + 1, 0).getDate();
         const firstMonthDays = Math.max(1, (daysInJoinMonth - joinDay) + 1);
-        const firstMonthCost = (netMonthly / daysInJoinMonth) * firstMonthDays;
+        const firstMonthCost = Math.round((netMonthly / daysInJoinMonth) * firstMonthDays);
 
-        // 2. عدد الشهور الكاملة التي تلت شهر الالتحاق وحتى الشهر الحالي
+        // 2. عدد الشهور الكاملة بين شهر الالتحاق وبين الشهر السابق للشهر الحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
 
-        // 3. مع حلول أول يوم في الشهر الحالي (1 في الشهر)، تُضاف رسوم الشهر الجديد كاملة مقدماً
+        // 3. مع حلول الشهر الجديد (مثل شهر 10)، تُضاف قيمة الشهر الجديد كاملة مسبقاً (مقدم)
         const currentMonthCost = netMonthly;
 
-        totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
-        descText = `جزء ش.9 + ${fullMonths} ش.كامل + ش.10 كامل`;
+        totalTuition = firstMonthCost + fullMonthsCost + currentMonthCost;
+        descText = `جزء ش.${joinMonth+1} + ${fullMonths} ش.كامل + ش.${nowMonth+1} مقدم`;
       }
 
       const booksTotal = getStudentBooksTotal(s.id);
