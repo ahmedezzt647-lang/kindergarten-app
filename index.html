@@ -166,9 +166,7 @@
 
     function scrollToSection(secId) { document.getElementById(secId).scrollIntoView({ behavior: 'smooth' }); }
     
-    // دالة لحساب الرسوم بالقاعدة الثابتة الدقيقة:
-    // إذا التحق من منتصف الشهر (مثل 15) يُحسب نصف شهر ثابت (netMonthly / 2)
-    // ومع حلول أول الشهر الجديد يضاف الشهر الجديد كاملاً مقدمةً.
+    // حساب الرسوم الثابتة: نصف شهر عند الالتحاق منتصف الشهر + شهر كامل مقدمة مع بداية كل شهر جديد
     function calculateStudentFinancials(s) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -178,7 +176,7 @@
       const netMonthly = monthlyFee - discount;
       
       const joinYear = joinDate.getFullYear();
-      const joinMonth = joinDate.getMonth(); // 0-11
+      const joinMonth = joinDate.getMonth();
       const joinDay = joinDate.getDate();
       
       const nowYear = now.getFullYear();
@@ -188,20 +186,14 @@
       let descText = '';
 
       if (joinYear === nowYear && joinMonth === nowMonth) {
-        // إذا كان التحاقه في نفس الشهر الحالي
         const partMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
         totalTuition = Math.round(partMonthCost);
         descText = joinDay > 15 ? 'نصف الشهر الحالي' : 'الشهر الحالي كامل';
       } else {
-        // 1. شهر الالتحاق: إذا كان من منتصف الشهر (بعد يوم 15) يُحسب نصف شهر (100)، وإذا قبلها يُحسب شهراً كاملاً
         const firstMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
-
-        // 2. عدد الشهور الكاملة اللاحقة بين شهر الالتحاق والشهر السابق للشهر الحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
-
-        // 3. مع دخول الشهر الجديد (مثل شهر 10)، تُضاف رسوم الشهر الجديد كاملة مقدمةً
         const currentMonthCost = netMonthly;
 
         totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
@@ -436,11 +428,17 @@
     }
 
     function payExtra(id, studentName) {
-      const amount = prompt('أدخل مبلغ الدفعة الجديدة (ر.س):'); if(!amount || isNaN(amount)) return;
+      const amount = prompt('أدخل مبلغ الدفعة الجديدة (ر.س):'); 
+      if(!amount || isNaN(amount)) return;
       const student = db.students.find(s => s.id === id);
       if(student) {
         student.paid = (parseFloat(student.paid) || 0) + parseFloat(amount);
-        db.payments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName, amount: parseFloat(amount), date: new Date().toISOString().split('T')[0] );
+        db.payments.push({ 
+          id: Math.floor(1000 + Math.random() * 9000).toString(), 
+          studentName, 
+          amount: parseFloat(amount), 
+          date: new Date().toISOString().split('T')[0] 
+        });
         saveDb();
       }
     }
