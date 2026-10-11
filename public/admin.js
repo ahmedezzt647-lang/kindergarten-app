@@ -177,7 +177,8 @@ VIEWS.home = () => {
         ${debtors.length ? debtors.slice(0, 5).map(({ s, b }) => `<div class="list-row"><div><b>${esc(s.name)}</b><div class="muted">${esc(s.grade || '')}</div></div><div class="actions"><span class="money-bad">${money(b.remaining)}</span>${s.parent_phone ? `<a class="btn sm wa" target="_blank" rel="noopener" href="${reminderLink(s, b)}">تذكير</a>` : ''}</div></div>`).join('') : '<p class="empty">لا توجد مبالغ متأخرة 🎉</p>'}
       </section>
       ${teachClasses().length && dayIdx(D.today) <= 4 ? `<section class="panel"><h2>التعليم اليوم <button class="btn sm ghost" onclick="UI.teachTab='today';UI.teachDate=D.today;go('teach')">فتح المهام</button></h2>
-        ${teachClasses().map(c => { const s = dayStats(c, D.today); return `<div class="list-row"><span>${esc(c)}</span><span class="tag ${s.done === s.total && s.total ? 'ok' : s.done ? 'warn' : 'mute'}">${s.done}/${s.total} مهمة</span></div>`; }).join('')}</section>` : ''}
+        ${teachClasses().map(c => { const s = dayStats(c, D.today); return `<div class="list-row"><span>${esc(c)}</span><span class="tag ${s.done === s.total && s.total ? 'ok' : s.done ? 'warn' : 'mute'}">${s.done}/${s.total} مهمة</span></div>`; }).join('')}
+        ${dayIdx(D.today) === 4 ? `<div class="note-box" style="margin-top:8px">🎉 اليوم خميس: فعالية ترفيهية تعليمية جاهزة لكل صف في صفحة التعليم.</div>` : ''}</section>` : ''}
       <section class="panel"><h2>الدخل والمصروف — آخر 6 أشهر</h2>${chart6()}
         <div class="board-legend" style="margin-top:10px"><span><i style="background:var(--palm)"></i>مقبوضات</span><span><i style="background:var(--rose)"></i>مصروفات</span></div></section>
       <section class="panel"><h2>فعاليات قادمة <button class="btn sm ghost" onclick="annForm()">+ فعالية</button></h2>
@@ -850,11 +851,12 @@ function dayStats(cls, date) {
   if (dayIdx(date) > 4) return { done: 0, total: 0 };
   let done = 0, total = 0;
   tracksFor(cls).forEach(t => Curriculum.TRACKS[t].subjects.forEach(s => { total++; if (logOf(date, t, s.name)?.done) done++; }));
+  if (dayIdx(date) === 4) bandsFor(cls).forEach(b => { total++; if (logOf(date, 'act-' + b, ACT_SUBJ)?.done) done++; });
   return { done, total };
 }
 
 VIEWS.teach = () => {
-  const tabs = [['today', 'مهام اليوم'], ['plan', 'الخطة السنوية'], ['exams', 'الامتحانات الأسبوعية'], ['grades', 'التقييمات'], ['progress', 'متابعة الإنجاز'], ['setup', 'إعداد العام الدراسي']];
+  const tabs = [['today', 'مهام اليوم'], ['plan', 'الخطة السنوية'], ['exams', 'الامتحانات الأسبوعية'], ['grades', 'التقييمات'], ['fun', '🎉 فعاليات الخميس'], ['progress', 'متابعة الإنجاز'], ['setup', 'إعداد العام الدراسي']];
   UI.teachTab ||= 'today';
   return `<div class="head"><div><h1>التعليم</h1><p>الخطة الدراسية ومهام المعلمين اليومية</p></div>
     <div class="actions"><button class="btn" onclick="print()">طباعة</button></div></div>
@@ -882,6 +884,7 @@ const TEACH = {
     return head + `<section class="panel"><h2>${esc(cls)} — ${DAY_NAMES[di]} ${fmtDate(date)} <span class="muted">الأسبوع ${week} من ${a.weeks} · ${TEACH_DAYS[di]}</span></h2>
       <div style="height:10px;background:var(--mist);border-radius:99px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:${st.total ? st.done / st.total * 100 : 0}%;background:var(--palm)"></div></div>
       <p class="muted" style="margin:0">أنجزت ${st.done} من ${st.total} مهمة اليوم</p></section>
+    ${di === 4 ? funSection(cls, date, week) : ''}
     ${tracksFor(cls).map(t => { const T = Curriculum.TRACKS[t];
       return `<section class="panel"><h2>${esc(T.name)} <span class="tag mute">منهج ${esc(T.system)}</span></h2>
       ${T.subjects.map(s => { const tp = topicFor(t, s.name, week), lg = logOf(date, t, s.name), acts = (ACTIVITIES[s.type] || ACTIVITIES.discover)[di];
@@ -967,6 +970,69 @@ const TEACH = {
     <section class="panel"><h2>الصفوف ومستوياتها</h2>${classes().map(c => `<div class="list-row"><b>${esc(c)}</b><span>${tracksFor(c).map(t => `<span class="tag info">${esc(Curriculum.TRACKS[t].name)}</span>`).join(' ') || '<span class="muted">غير مربوط بخطة</span>'}</span></div>`).join('')}
     <p class="muted">لتغيير مستويات صف: الإعدادات ← الصفوف ← تعديل.</p></section>`;
   },
+};
+/* ---------- فعاليات الخميس الترفيهية التعليمية ---------- */
+const ACT_SUBJ = 'فعالية الخميس';
+const bandsFor = cls => [...new Set(tracksFor(cls).map(t => Activities.BAND_OF[t]).filter(Boolean))];
+const thursdayOf = week => addDays(acad().start, (week - 1) * 7 + (4 - dayIdx(acad().start) + 7) % 7);
+function occasionBox(date) {
+  const oc = Activities.occasionsNear(date);
+  return oc.length ? `<div class="note-box">📅 مناسبة هذا الأسبوع: ${oc.map(o => `<b>${esc(o.name)}</b> — ${esc(o.idea)}`).join('<br>')}</div>` : '';
+}
+function funSection(cls, date, week) {
+  return `<section class="panel fun"><h2>🎉 فعالية الخميس الترفيهية التعليمية</h2>${occasionBox(date)}
+    ${bandsFor(cls).map(b => { const A = Activities.activityFor(b, week); if (!A) return ''; const lg = logOf(date, 'act-' + b, ACT_SUBJ);
+      return `<div class="task ${lg?.done ? 'done' : ''}">
+        <label class="chk"><input type="checkbox" ${lg?.done ? 'checked' : ''} onchange="teachDone('act-${b}',ACT_SUBJ,this.checked)"><span></span></label>
+        <div class="body"><div class="subj">${esc(Activities.BANDS[b])} · ${esc(A.k)} · ${esc(A.time)}</div>
+          <div class="topic">${esc(A.t)}</div>
+          <div class="what">${esc(A.goal)}
+            <div class="actions" style="margin-top:8px"><button class="btn sm primary" onclick="openActivity('${b}',${week},'${esc(cls)}')">🎉 خطوات الفعالية ومسابقة المراجعة</button></div></div>
+          <input class="note" placeholder="كيف كانت الفعالية؟ (اختياري)" value="${esc(lg?.note || '')}" onchange="teachNote('act-${b}',ACT_SUBJ,this.value)">
+        </div></div>`; }).join('')}</section>`;
+}
+// أسئلة مسابقة المراجعة: من أسئلة وأجوبة دروس هذا الأسبوع لمستويات الفئة
+function reviewQuestions(band, week, cls) {
+  const tracks = (cls ? tracksFor(cls) : Object.keys(Curriculum.TRACKS)).filter(t => Activities.BAND_OF[t] === band);
+  const out = [];
+  tracks.forEach(t => Curriculum.TRACKS[t].subjects.forEach(s => { const L = getLesson(t, s.name, baseUnit(t, s.name, week));
+    (L?.qa || []).forEach(([q, a]) => out.push({ lvl: Curriculum.TRACKS[t].short, sub: s.name, q, a })); }));
+  return out;
+}
+function activityHtml(band, week, cls) {
+  const A = Activities.activityFor(band, week); if (!A) return '<p class="empty">لا توجد فعالية</p>';
+  const qs = reviewQuestions(band, week, cls), th = thursdayOf(week);
+  const list = (title, arr, tag = 'ul') => `<fieldset><legend>${title}</legend><${tag} class="lesson-ul">${arr.map(x => `<li>${esc(x)}</li>`).join('')}</${tag}></fieldset>`;
+  return `<h2>🎉 ${esc(A.t)}</h2><p class="muted" style="margin-top:-10px">${esc(Activities.BANDS[band])}${cls ? ' · ' + esc(cls) : ''} · الأسبوع ${week} · خميس ${fmtDate(th)} · ${esc(A.k)} · ⏱️ ${esc(A.time)}</p>
+    ${occasionBox(th)}
+    <fieldset><legend>🎯 الهدف التعليمي</legend><p>${esc(A.goal)}</p></fieldset>
+    ${list('🧰 الأدوات', A.mat)}${list('👣 خطوات التنفيذ', A.steps, 'ol')}
+    ${A.tip ? `<fieldset><legend>💡 نصيحة للمعلم</legend><p>${esc(A.tip)}</p></fieldset>` : ''}
+    ${qs.length ? `<fieldset><legend>🏆 مسابقة مراجعة الأسبوع (${qs.length} سؤالاً من دروس هذا الأسبوع)</legend>
+      <p class="muted">قسّم الطلاب فريقين، وكل إجابة صحيحة = نقطة. تصلح لآخر 10 دقائق من الفعالية.</p>
+      ${qs.map((x, i) => `<details class="qa"><summary>${i + 1}. <span class="tag mute">${esc(x.lvl)} · ${esc(x.sub)}</span> <bdi>${esc(x.q)}</bdi></summary><p>✅ <bdi>${esc(x.a)}</bdi></p></details>`).join('')}</fieldset>` : ''}`;
+}
+function openActivity(band, week, cls) {
+  modal(`<div class="lesson">${activityHtml(band, week, cls)}</div>
+    <div class="modal-actions"><button class="btn" value="cancel">إغلاق</button><button type="button" class="btn primary" onclick="printActivity('${band}',${week},'${esc(cls || '')}')">طباعة</button></div>`);
+}
+function printActivity(band, week, cls) {
+  printDoc('فعالية الخميس', `<div class="lesson">${activityHtml(band, week, cls)}</div>
+    <style>fieldset{border:1px solid #DCE5E3;border-radius:10px;margin:12px 0;padding:10px 14px}legend{font-weight:700;color:#145741}.tag{background:#EEF3F2;border-radius:6px;padding:1px 6px;font-size:12px}.note-box{background:#FFF7E0;border-radius:8px;padding:8px 12px;margin:8px 0}details p{margin:4px 0 0}</style>
+    <script>document.querySelectorAll('details').forEach(d=>d.open=true)<\/script>`);
+}
+TEACH.fun = () => {
+  const a = acad(), cw = weekOf(D.today), bands = [...new Set(teachClasses().flatMap(bandsFor))];
+  const all = Object.keys(Activities.BANDS);
+  if (!all.includes(UI.funBand)) UI.funBand = bands[0] || all[0];
+  const b = UI.funBand;
+  return `<div class="filters">${all.map(x => `<button class="btn ${x === b ? 'primary' : ''}" onclick="UI.funBand='${x}';render()">${esc(Activities.BANDS[x])}</button>`).join('')}</div>
+  <section class="panel"><h2>فعاليات الخميس — ${esc(Activities.BANDS[b])} <span class="muted">فعالية جاهزة لكل أسبوع مع مسابقة مراجعة من دروس الأسبوع</span></h2>
+  <div class="tbl-wrap"><table class="plan"><thead><tr><th>الأسبوع</th><th>الخميس</th><th>الفعالية</th><th>النوع</th><th></th></tr></thead><tbody>
+  ${Array.from({ length: a.weeks }, (_, i) => i + 1).map(w => { const A = Activities.activityFor(b, w), th = thursdayOf(w), oc = Activities.occasionsNear(th);
+    return `<tr${w === cw ? ' class="now"' : ''}><td class="num"><b>${w}</b></td><td>${fmtDate(th)}</td><td><b>${esc(A.t)}</b>${oc.length ? `<div class="muted">📅 ${oc.map(o => esc(o.name)).join('، ')}</div>` : ''}</td><td>${esc(A.k)}</td>
+    <td><button class="btn sm" onclick="openActivity('${b}',${w},'')">التفاصيل</button></td></tr>`; }).join('')}
+  </tbody></table></div></section>`;
 };
 const LEVELS = ['ممتاز', 'جيد جداً', 'جيد', 'مقبول', 'يحتاج متابعة'];
 // عنوان الوحدة الأصلي للأسبوع (الشرح مربوط به حتى لو عُدّل اسم الموضوع)
