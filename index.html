@@ -147,27 +147,27 @@
     document.getElementById('exp-date').valueAsDate = new Date();
     document.getElementById('std-join-date').valueAsDate = new Date();
 
-    let db = {
-      students: JSON.parse(localStorage.getItem('rw_students') || '[]'),
-      payments: JSON.parse(localStorage.getItem('rw_payments') || '[]'),
-      expenses: JSON.parse(localStorage.getItem('rw_expenses') || '[]'),
-      attendance: JSON.parse(localStorage.getItem('rw_attendance') || '[]'),
-      books: JSON.parse(localStorage.getItem('rw_books') || '[]')
-    };
-
-    function saveDb() {
-      localStorage.setItem('rw_students', JSON.stringify(db.students));
-      localStorage.setItem('rw_payments', JSON.stringify(db.payments));
-      localStorage.setItem('rw_expenses', JSON.stringify(db.expenses));
-      localStorage.setItem('rw_attendance', JSON.stringify(db.attendance));
-      localStorage.setItem('rw_books', JSON.stringify(db.books));
-      refreshUI();
+    async function fetchData(url) {
+      try { const res = await fetch(url); return await res.json(); } catch(e) { return []; }
+    }
+    async function postData(url, data) {
+      try {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        return await res.json();
+      } catch(e) { return {}; }
+    }
+    async function putData(url, data) {
+      try {
+        const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        return await res.json();
+      } catch(e) { return {}; }
+    }
+    async function deleteData(url) {
+      try { await fetch(url, { method: 'DELETE' }); } catch(e) {}
     }
 
-    function scrollToSection(secId) { document.getElementById(secId).scrollIntoView({ behavior: 'smooth' }); }
-    
-    // حساب الرسوم الثابتة: نصف شهر عند الالتحاق منتصف الشهر + شهر كامل مقدمة مع بداية كل شهر جديد
-    function calculateStudentFinancials(s) {
+    // حساب الرسوم بالقاعدة الثابتة (نصف الشهر الأول عند الالتحاق منتصف الشهر + الشهر الجديد مقدمة)
+    function calculateStudentFinancials(s, booksList) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
       
@@ -200,7 +200,7 @@
         descText = `نصف ش.${joinMonth+1} + ${fullMonths} ش.كامل + ش.${nowMonth+1} مقدم`;
       }
 
-      const booksTotal = getStudentBooksTotal(s.id);
+      const booksTotal = booksList.filter(b => b.studentId === s.id).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
       
       return {
         desc: descText,
@@ -209,18 +209,25 @@
       };
     }
 
+    function scrollToSection(secId) { document.getElementById(secId).scrollIntoView({ behavior: 'smooth' }); }
     function showBox(boxId) { document.querySelectorAll('.details-box').forEach(box => box.classList.remove('active')); const targetBox = document.getElementById(boxId); targetBox.classList.add('active'); targetBox.scrollIntoView({ behavior: 'smooth' }); }
     function hideBox(boxId) { document.getElementById(boxId).classList.remove('active'); }
 
-    function refreshUI() {
-      renderExpenses(db.expenses); 
-      renderStudents(db.students); 
-      renderRevenue(db.payments); 
-      renderClasses(db.students); 
-      renderAttendance(db.students, db.attendance); 
-      renderBookSales(db.books); 
-      populateStudentSelect(db.students); 
-      updateStats(db.expenses, db.students, db.payments, db.books);
+    async function refreshAll() {
+      const students = await fetchData('/api/students');
+      const payments = await fetchData('/api/payments');
+      const expenses = await fetchData('/api/expenses');
+      const attendance = await fetchData('/api/attendance');
+      const books = await fetchData('/api/books');
+
+      renderStudents(students, attendance, books);
+      renderExpenses(expenses);
+      renderRevenue(payments);
+      renderClasses(students, books);
+      renderAttendance(students, attendance);
+      renderBookSales(books);
+      populateStudentSelect(students);
+      updateStats(expenses, students, payments, books);
     }
 
     function populateStudentSelect(students) {
@@ -232,30 +239,26 @@
       document.getElementById('book-student-select').innerHTML = options;
     }
 
-    function getStudentBooksTotal(studentId) { 
-      return db.books.filter(b => b.studentId === studentId).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0); 
-    }
-
     function renderBookSales(books) {
       let html = '';
       if(books.length === 0) { html = '<tr><td colspan="6">لا توجد مبيعات كتب</td></tr>'; }
       else {
         books.forEach((b, i) => {
-          html += `<tr><td>${i+1}</td><td><b>${b.studentName}</b></td><td>${b.title}</td><td style="color:#d97706; font-weight:bold;">${b.price} ر.س</td><td>${b.date}</td><td><button class="btn-delete" onclick="deleteBookSale('${b.id}')">حذف</button></td></tr>`;
+          html += `<tr><td>${i+1}</td><td><b>${b.studentName}</b></td><td>${b.title}</td><td style="color:#d97706; font-weight:bold;">${b.price} ر.س</td><td>${b.date}</td><td><button class="btn-delete" onclick="removeBook('${b.id}')">حذف</button></td></tr>`;
         });
       }
       document.getElementById('books-table').innerHTML = html;
     }
 
-    function renderClasses(students) {
+    function renderClasses(students, books) {
       const classesMap = {};
       students.filter(s => s.status !== 'inactive').forEach(s => {
         const cName = s.grade || 'غير محدد';
-        const financials = calculateStudentFinancials(s);
+        const fin = calculateStudentFinancials(s, books);
         const paid = parseFloat(s.paid) || 0;
         if (!classesMap[cName]) classesMap[cName] = { count: 0, totalDue: 0, totalPaid: 0 };
         classesMap[cName].count++; 
-        classesMap[cName].totalDue += financials.totalDue; 
+        classesMap[cName].totalDue += fin.totalDue; 
         classesMap[cName].totalPaid += paid;
       });
       const keys = Object.keys(classesMap);
@@ -280,7 +283,7 @@
       if(data.length === 0) { html = '<tr><td colspan="5">لا توجد مصروفات</td></tr>'; }
       else {
         data.forEach((e, i) => {
-          html += `<tr><td>${i+1}</td><td><b>${e.title}</b></td><td style="color:#dc2626; font-weight:bold;">${e.amount} ر.س</td><td>${e.date}</td><td><button class="btn-delete" onclick="deleteExpense('${e.id}')">حذف</button></td></tr>`;
+          html += `<tr><td>${i+1}</td><td><b>${e.title}</b></td><td style="color:#dc2626; font-weight:bold;">${e.amount} ر.س</td><td>${e.date}</td><td><button class="btn-delete" onclick="removeExpense('${e.id}')">حذف</button></td></tr>`;
         });
       }
       document.getElementById('expenses-table').innerHTML = html;
@@ -291,7 +294,7 @@
       if(payments.length === 0) { html = '<tr><td colspan="6">لا توجد عمليات دفع</td></tr>'; }
       else {
         payments.forEach((p, i) => {
-          html += `<tr><td>${i+1}</td><td><b>#${p.id}</b></td><td>${p.studentName}</td><td style="color:#059669; font-weight:bold;">${p.amount} ر.س</td><td>${p.date}</td><td><button class="btn-delete" onclick="deletePayment('${p.id}')">حذف</button></td></tr>`;
+          html += `<tr><td>${i+1}</td><td><b>#${p.id}</b></td><td>${p.studentName}</td><td style="color:#059669; font-weight:bold;">${p.amount} ر.س</td><td>${p.date}</td><td><button class="btn-delete" onclick="removePayment('${p.id}')">حذف</button></td></tr>`;
         });
       }
       document.getElementById('revenue-table').innerHTML = html;
@@ -307,26 +310,26 @@
           const rec = attendance.find(a => a.studentId === s.id && a.date === today);
           let statusText = rec ? (rec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'لم يسجل';
           let timeText = rec ? rec.time : '-';
-          html += `<tr><td>${s.name}</td><td>${s.grade}</td><td><b>${statusText}</b></td><td>${timeText}</td><td><button class="btn-pay" onclick="markAttendance('${s.id}', 'present')">حاضر</button> <button class="btn-absent" onclick="markAttendance('${s.id}', 'absent')">غائب</button></td></tr>`;
+          html += `<tr><td>${s.name}</td><td>${s.grade}</td><td><b>${statusText}</b></td><td>${timeText}</td><td><button class="btn-pay" onclick="setAttendance('${s.id}', 'present')">حاضر</button> <button class="btn-absent" onclick="setAttendance('${s.id}', 'absent')">غائب</button></td></tr>`;
         });
       }
       document.getElementById('attendance-table').innerHTML = html;
     }
 
-    function renderStudents(data) {
+    function renderStudents(students, attendance, books) {
       const today = new Date().toISOString().split('T')[0];
       let rows = '';
-      if(data.length === 0) {
+      if(students.length === 0) {
         rows = '<tr><td colspan="12">لا توجد بيانات طلاب مسجلة</td></tr>';
       } else {
-        data.forEach(s => {
-          const fin = calculateStudentFinancials(s);
+        students.forEach(s => {
+          const fin = calculateStudentFinancials(s, books);
           const paid = parseFloat(s.paid) || 0;
           const remaining = fin.totalDue - paid;
           const isInactive = s.status === 'inactive';
           const statusBadge = isInactive ? '<span class="badge-warning">منقطع (لم يعد يأتي)</span>' : '<span class="badge-success">مستمر</span>';
           
-          const attRec = db.attendance.find(a => a.studentId === s.id && a.date === today);
+          const attRec = attendance.find(a => a.studentId === s.id && a.date === today);
           let attText = isInactive ? '-' : (attRec ? (attRec.status === 'present' ? '✅ حاضر' : '❌ غائب') : 'غير مسجل');
           let badgeClass = remaining > 0 ? 'badge-danger' : 'badge-success';
 
@@ -342,9 +345,9 @@
             <td><span class="${badgeClass}">${remaining} ر.س</span></td>
             <td>${statusBadge}</td>
             <td>
-              <button class="btn-pay" onclick="payExtra('${s.id}', '${s.name}')">+ دفعة</button>
-              ${isInactive ? `<button class="btn-success" onclick="restoreStudent('${s.id}')">إعادة تفعيل</button>` : `<button class="btn-inactive" onclick="markInactive('${s.id}')">لم يعد يأتي</button>`}
-              <button class="btn-delete" onclick="deleteStudent('${s.id}')">حذف نهائي</button>
+              <button class="btn-pay" onclick="payMore('${s.id}', '${s.name}')">+ دفعة</button>
+              ${isInactive ? `<button class="btn-success" onclick="changeStatus('${s.id}', 'active')">إعادة تفعيل</button>` : `<button class="btn-inactive" onclick="changeStatus('${s.id}', 'inactive')">لم يعد يأتي</button>`}
+              <button class="btn-delete" onclick="removeStudent('${s.id}')">حذف نهائي</button>
             </td>
           </tr>`;
         });
@@ -368,7 +371,7 @@
       document.getElementById('rep-net').innerText = (totalRev - totalExp) + ' ر.س';
     }
 
-    function addStudent() {
+    async function addStudent() {
       const name = document.getElementById('std-name').value;
       const grade = document.getElementById('std-class').value;
       const phone = document.getElementById('std-phone').value;
@@ -379,22 +382,7 @@
 
       if(!name || !monthlyFee) return alert('يرجى كتابة اسم الطفل والرسم الشهري');
 
-      const newStudent = { 
-        id: Date.now().toString(), 
-        name, 
-        grade, 
-        parent_phone: phone, 
-        join_date, 
-        monthlyFee, 
-        discount, 
-        paid, 
-        status: 'active' 
-      };
-      db.students.push(newStudent);
-
-      if (parseFloat(paid) > 0) {
-        db.payments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: name, amount: parseFloat(paid), date: new Date().toISOString().split('T')[0] });
-      }
+      await postData('/api/students', { name, grade, parent_phone: phone, join_date, monthlyFee, discount, paid });
 
       document.getElementById('std-name').value = '';
       document.getElementById('std-class').value = '';
@@ -403,77 +391,55 @@
       document.getElementById('std-discount').value = '';
       document.getElementById('std-paid').value = '';
 
-      saveDb();
+      refreshAll();
     }
 
-    function addBookToStudent() {
+    async function addBookToStudent() {
       const studentId = document.getElementById('book-student-select').value;
       const title = document.getElementById('book-title').value;
       const price = document.getElementById('book-price').value;
       if(!studentId || !title || !price) return alert('يرجى اختيار الطالب واسم الكتاب وسعره');
-      const student = db.students.find(s => s.id === studentId);
-      db.books.push({ id: Date.now().toString(), studentId, studentName: student ? student.name : '', title, price, date: new Date().toISOString().split('T')[0] });
+      const students = await fetchData('/api/students');
+      const student = students.find(s => s.id === studentId);
+      await postData('/api/books', { studentId, studentName: student ? student.name : '', title, price, date: new Date().toISOString().split('T')[0] });
       document.getElementById('book-title').value = ''; document.getElementById('book-price').value = '';
-      saveDb(); showBox('books-details-box');
+      refreshAll(); showBox('books-details-box');
     }
 
-    function addExpense() {
+    async function addExpense() {
       const title = document.getElementById('exp-title').value;
       const amount = document.getElementById('exp-amount').value;
       const date = document.getElementById('exp-date').value;
       if(!title || !amount) return alert('يرجى كتابة البند والمبلغ');
-      db.expenses.push({ id: Date.now().toString(), title, amount, date });
+      await postData('/api/expenses', { title, amount, date });
       document.getElementById('exp-title').value = ''; document.getElementById('exp-amount').value = '';
-      saveDb();
+      refreshAll();
     }
 
-    function payExtra(id, studentName) {
+    async function payMore(id, studentName) {
       const amount = prompt('أدخل مبلغ الدفعة الجديدة (ر.س):'); 
       if(!amount || isNaN(amount)) return;
-      const student = db.students.find(s => s.id === id);
-      if(student) {
-        student.paid = (parseFloat(student.paid) || 0) + parseFloat(amount);
-        db.payments.push({ 
-          id: Math.floor(1000 + Math.random() * 9000).toString(), 
-          studentName, 
-          amount: parseFloat(amount), 
-          date: new Date().toISOString().split('T')[0] 
-        });
-        saveDb();
-      }
+      await postData('/api/students/pay', { id, amount: parseFloat(amount), studentName });
+      refreshAll();
     }
 
-    function markInactive(id) {
-      if(!confirm('هل تريد تحويل هذا الطالب إلى حالة (لم يعد يأتي)؟ ستظل مدفوعاته ومستحقاته المالية محفوظة كمديونية.')) return;
-      const student = db.students.find(s => s.id === id);
-      if(student) {
-        student.status = 'inactive';
-        saveDb();
-      }
+    async function changeStatus(id, status) {
+      if(status === 'inactive' && !confirm('هل تريد تحويل هذا الطالب إلى حالة (لم يعد يأتي)؟ ستظل مديونيته محفوظة.')) return;
+      await putData(`/api/students/status/${id}`, { status });
+      refreshAll();
     }
 
-    function restoreStudent(id) {
-      const student = db.students.find(s => s.id === id);
-      if(student) {
-        student.status = 'active';
-        saveDb();
-      }
+    async function setAttendance(studentId, status) {
+      await postData('/api/attendance', { studentId, status });
+      refreshAll();
     }
 
-    function markAttendance(studentId, status) {
-      const today = new Date().toISOString().split('T')[0];
-      const time = new Date().toLocaleTimeString('ar-EG');
-      db.attendance = db.attendance.filter(a => !(a.studentId === studentId && a.date === today));
-      db.attendance.push({ studentId, status, date: today, time });
-      saveDb();
-    }
+    async function removeStudent(id) { if(!confirm('حذف هذا الطالب نهائياً؟')) return; await deleteData(`/api/students/${id}`); refreshAll(); }
+    async function removeExpense(id) { if(!confirm('حذف هذا المصروف؟')) return; await deleteData(`/api/expenses/${id}`); refreshAll(); }
+    async function removeBook(id) { if(!confirm('حذف هذا الكتاب؟')) return; await deleteData(`/api/books/${id}`); refreshAll(); }
+    async function removePayment(id) { if(!confirm('حذف هذا الإيصال؟')) return; await deleteData(`/api/payments/${id}`); refreshAll(); }
 
-    function deleteStudent(id) { if(!confirm('تنبيه: هل تريد حذف هذا الطالب نهائياً من السجلات؟')) return; db.students = db.students.filter(s => s.id !== id); saveDb(); }
-    function deleteExpense(id) { if(!confirm('حذف هذا المصروف؟')) return; db.expenses = db.expenses.filter(e => e.id !== id); saveDb(); }
-    function deleteBookSale(id) { if(!confirm('حذف هذا الكتاب؟')) return; db.books = db.books.filter(b => b.id !== id); saveDb(); }
-    function deletePayment(id) { if(!confirm('حذف هذا الإيصال؟')) return; db.payments = db.payments.filter(p => p.id !== id); saveDb(); }
-
-    refreshUI();
+    refreshAll();
   </script>
 </body>
 </html>
