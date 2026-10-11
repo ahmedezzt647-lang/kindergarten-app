@@ -147,7 +147,7 @@ function attendanceBoard(date, cls) {
         return `<button class="kid ${st}" onclick="cycleAtt('${s.id}','${date}')" title="اضغط لتغيير الحالة">
           <span class="av">${esc(initial(s.name))}</span><span class="nm">${esc(s.name)}</span>
           <span class="st">${st ? STATUS[st] + (a.checkIn ? ' ' + esc(a.checkIn) : '') : 'لم يُسجّل'}</span>
-          ${s.allergies ? `<span class="alert">⚠ حساسية</span>` : ''}</button>`; }).join('')}
+</button>`; }).join('')}
     </div></div>`;
   }).join('') + `<div class="board-legend"><span>اضغط على الطفل للتبديل:</span><span><i style="background:var(--palm)"></i>حاضر</span><span><i style="background:var(--rose)"></i>غائب</span><span><i style="background:var(--sun)"></i>متأخر</span><span><i style="background:var(--sky)"></i>بعذر</span></div>`;
 }
@@ -195,7 +195,7 @@ VIEWS.attendance = () => {
   <section class="panel"><h2>تفاصيل اليوم والانصراف</h2>
     <div class="tbl-wrap"><table><thead><tr><th>الطفل</th><th>الصف</th><th>الحالة</th><th>الدخول</th><th>الانصراف</th><th></th></tr></thead><tbody>
     ${list.map(s => { const a = attOf(s.id, date);
-      return `<tr><td><b>${esc(s.name)}</b>${s.allergies ? ` <span class="tag bad">حساسية: ${esc(s.allergies)}</span>` : ''}</td><td>${esc(s.grade || '')}</td>
+      return `<tr><td><b>${esc(s.name)}</b></td><td>${esc(s.grade || '')}</td>
       <td>${a ? `<span class="tag ${STATUS_TAG[a.status]}">${STATUS[a.status]}</span>` : '<span class="tag mute">لم يُسجّل</span>'}</td>
       <td class="num">${esc(a?.checkIn || '—')}</td><td class="num">${esc(a?.checkOut || '—')}${a?.pickedUpBy ? `<div class="muted">استلمه: ${esc(a.pickedUpBy)}</div>` : ''}</td>
       <td class="actions">${a && ['present', 'late'].includes(a.status) && !a.checkOut && date === D.today ? `<button class="btn sm" onclick="checkOut('${s.id}')">تسجيل انصراف</button>` : ''}
@@ -218,7 +218,7 @@ function monthlyAttendance(m, list) {
 }
 async function checkOut(id) {
   const s = studentById(id);
-  const who = prompt(`من استلم ${s.name}؟${s.authorized_pickup ? `\nالمصرّح لهم: ${s.authorized_pickup}` : ''}`, s.parent_name || '');
+  const who = prompt(`من استلم ${s.name}؟`, s.parent_name || '');
   if (who === null) return;
   await act('POST', '/api/attendance', { studentId: id, checkOut: true, pickedUpBy: who }, 'تم تسجيل الانصراف');
 }
@@ -244,7 +244,7 @@ VIEWS.students = () => {
   <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>الصف</th><th>تاريخ الالتحاق</th><th>ولي الأمر</th><th>الرسم الشهري</th><th>المستحق</th><th>المدفوع</th><th>المتبقي</th><th>اليوم</th></tr></thead><tbody>
   ${list.map(s => { const b = bal(s); const a = attOf(s.id, D.today);
     return `<tr class="click ${s.status === 'inactive' ? 'dim' : ''}" onclick="openStudent('${s.id}')" tabindex="0" onkeydown="if(event.key==='Enter')openStudent('${s.id}')">
-      <td><b>${esc(s.name)}</b>${s.allergies ? ' <span title="حساسية">⚠️</span>' : ''}${s.status === 'inactive' ? ' <span class="tag warn">منقطع</span>' : ''}</td>
+      <td><b>${esc(s.name)}</b>${s.status === 'inactive' ? ' <span class="tag warn">منقطع</span>' : ''}</td>
       <td>${esc(s.grade || '—')}</td><td class="num" style="white-space:nowrap">${esc(fmtDate(s.join_date))}</td><td>${esc(s.parent_name || '')}<div class="muted num">${esc(s.parent_phone || '')}</div></td>
       <td>${money(N(s.monthlyFee) - N(s.discount))}${N(s.discount) ? `<div class="muted">خصم ${fmt(s.discount)}</div>` : ''}</td>
       <td>${money(b.totalDue)}</td><td class="money-ok">${money(b.paid)}</td>
@@ -262,12 +262,10 @@ function openStudent(id) {
   const notes = D.notes.filter(n => n.studentId === id).slice(0, 8);
   const att = D.attendance.filter(a => a.studentId === id);
   const rate = att.length ? Math.round(att.filter(a => ['present', 'late'].includes(a.status)).length / att.length * 100) : null;
-  const age = s.birth_date ? Math.floor((new Date(D.today) - new Date(s.birth_date)) / (365.25 * 864e5)) : null;
   modal(`
     <div class="profile-top"><div class="av">${esc(initial(s.name))}</div><div><h2 style="margin:0">${esc(s.name)}</h2>
-      <div class="muted">${esc(s.grade || 'بدون صف')}${age !== null ? ` · ${age} سنوات` : ''} · ملتحق ${esc(s.join_date || '—')}</div>
+      <div class="muted">${esc(s.grade || 'بدون صف')} · ملتحق ${esc(s.join_date || '—')}</div>
       ${s.status === 'inactive' ? `<span class="tag warn">منقطع منذ ${esc(s.inactive_date || '')}</span>` : '<span class="tag ok">مستمر</span>'}</div></div>
-    ${s.allergies || s.medical_notes ? `<div class="health">⚠️ ${esc([s.allergies && 'حساسية: ' + s.allergies, s.medical_notes].filter(Boolean).join(' — '))}</div>` : ''}
 
     <div class="figures" style="grid-template-columns:repeat(3,1fr)">
       <div class="fig"><span>المستحق</span><b>${fmt(b.totalDue)}</b><small>${esc(b.desc)}${b.booksTotal ? ` + كتب ${fmt(b.booksTotal)}` : ''}${b.oneTime ? ` − خصم ${fmt(b.oneTime)}${s.oneTimeDiscountNote ? ' (' + esc(s.oneTimeDiscountNote) + ')' : ''}` : ''}</small></div>
@@ -294,9 +292,7 @@ function openStudent(id) {
 
     <fieldset><legend>بيانات التواصل</legend><dl class="kv">
       <dt>ولي الأمر</dt><dd>${esc(s.parent_name || '—')}</dd>
-      <dt>الجوال</dt><dd>${s.parent_phone ? `<a href="tel:${esc(s.parent_phone)}">${esc(s.parent_phone)}</a>` : '—'}${s.parent_phone2 ? ` · <a href="tel:${esc(s.parent_phone2)}">${esc(s.parent_phone2)}</a>` : ''}</dd>
-      <dt>للطوارئ</dt><dd>${esc(s.emergency_contact || '—')}</dd>
-      <dt>المصرّح لهم بالاستلام</dt><dd>${esc(s.authorized_pickup || '—')}</dd>
+      <dt>الجوال</dt><dd>${s.parent_phone ? `<a href="tel:${esc(s.parent_phone)}">${esc(s.parent_phone)}</a>` : '—'}</dd>
       ${s.notes ? `<dt>ملاحظات</dt><dd>${esc(s.notes)}</dd>` : ''}</dl></fieldset>
 
     <fieldset><legend>الدفعات</legend>
@@ -318,19 +314,10 @@ function studentForm(id) {
     <fieldset><legend>الطفل</legend><div class="grid g2">
       <label class="f">الاسم الثلاثي *<input name="name" required value="${v('name')}"></label>
       <label class="f">الصف<input name="grade" list="cls-list" value="${v('grade')}" placeholder="اختر أو اكتب صفاً"><datalist id="cls-list">${classes().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
-      <label class="f">تاريخ الميلاد<input type="date" name="birth_date" value="${v('birth_date')}"></label>
-      <label class="f">الجنس<select name="gender">${['', 'ذكر', 'أنثى'].map(g => `<option ${s.gender === g ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
     </div></fieldset>
     <fieldset><legend>ولي الأمر</legend><div class="grid g2">
       <label class="f">اسم ولي الأمر<input name="parent_name" value="${v('parent_name')}"></label>
       <label class="f">الجوال (واتساب)<input name="parent_phone" inputmode="tel" value="${v('parent_phone')}" placeholder="05xxxxxxxx"></label>
-      <label class="f">جوال آخر<input name="parent_phone2" inputmode="tel" value="${v('parent_phone2')}"></label>
-      <label class="f">جهة اتصال للطوارئ<input name="emergency_contact" value="${v('emergency_contact')}"></label>
-      <label class="f" style="grid-column:1/-1">المصرّح لهم باستلام الطفل<input name="authorized_pickup" value="${v('authorized_pickup')}" placeholder="مثال: الأب، الأم، العم سعيد"></label>
-    </div></fieldset>
-    <fieldset><legend>الصحة</legend><div class="grid g2">
-      <label class="f">الحساسية<input name="allergies" value="${v('allergies')}" placeholder="مثال: الفول السوداني"></label>
-      <label class="f">ملاحظات طبية<input name="medical_notes" value="${v('medical_notes')}"></label>
     </div></fieldset>
     <fieldset><legend>الرسوم</legend><div class="grid g3">
       <label class="f">تاريخ الالتحاق<input type="date" name="join_date" value="${v('join_date') || D.today}"></label>
@@ -630,8 +617,8 @@ function downloadCsv(name, rows) {
   a.download = `${name}-${D.today}.csv`; a.click();
 }
 function exportStudents() {
-  downloadCsv('الطلاب', [['الاسم', 'الصف', 'ولي الأمر', 'الجوال', 'تاريخ الالتحاق', 'الرسم الشهري', 'الخصم', 'المستحق', 'المدفوع', 'المتبقي', 'الحالة', 'الحساسية'],
-    ...D.students.map(s => { const b = bal(s); return [s.name, s.grade, s.parent_name, s.parent_phone, s.join_date, s.monthlyFee, s.discount, b.totalDue, b.paid, b.remaining, s.status === 'inactive' ? 'منقطع' : 'مستمر', s.allergies]; })]);
+  downloadCsv('الطلاب', [['الاسم', 'الصف', 'ولي الأمر', 'الجوال', 'تاريخ الالتحاق', 'الرسم الشهري', 'الخصم', 'المستحق', 'المدفوع', 'المتبقي', 'الحالة'],
+    ...D.students.map(s => { const b = bal(s); return [s.name, s.grade, s.parent_name, s.parent_phone, s.join_date, s.monthlyFee, s.discount, b.totalDue, b.paid, b.remaining, s.status === 'inactive' ? 'منقطع' : 'مستمر']; })]);
 }
 function csv(kind) {
   if (kind === 'payments') downloadCsv('الدفعات', [['رقم الإيصال', 'الطالب', 'المبلغ', 'الطريقة', 'التاريخ', 'ملاحظة'], ...D.payments.map(p => [p.receiptNo, p.studentName, p.amount, p.method, p.date, p.note])]);
