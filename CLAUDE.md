@@ -1,6 +1,7 @@
 # روضة نور ومكة — ملاحظات للمطوّر
 
 برنامج إدارة روضة (عربي RTL) على https://rawda-app.onrender.com — Node.js + Express + Mongoose، قاعدة MongoDB Atlas (قاعدة `kindergarten`).
+البرنامج يبقى مستيقظاً عبر `.github/workflows/keep-awake.yml` (كل 10 دقائق، مجاني لأن المستودع عام). الواجهة تتحدث تلقائياً كل دقيقة (`softRefresh`).
 النشر تلقائي من فرع `main` إلى خدمة Render `rawda-app` (srv-db2gnegae00c73a9p4t0). لا تضع أي كلمة مرور في الكود؛ الأسرار في متغيرات Render:
 `MONGO_URI`, `ADMIN_PASSWORD`, `SESSION_SECRET` (واختيارياً `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`).
 

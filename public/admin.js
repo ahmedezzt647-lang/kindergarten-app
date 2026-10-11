@@ -32,10 +32,36 @@ async function api(method, url, body) {
     return d;
   } catch { toast('لا يوجد اتصال بالخادم، تحقق من الإنترنت', true); return null; }
 }
+let lastSig = '', lastLoad = 0;
 async function load() {
   const d = await api('GET', '/api/all');
-  if (d) { D = d; UI.attDate ||= d.today; UI.repMonth ||= monthOf(d.today); render(); }
+  if (d) { D = d; lastSig = JSON.stringify(d); lastLoad = Date.now(); UI.attDate ||= d.today; UI.repMonth ||= monthOf(d.today); render(); }
 }
+// تحديث تلقائي: كل دقيقة وعند الرجوع للتطبيق، بدون إزعاج من يكتب أو يملأ نموذجاً
+function canRefresh() {
+  const a = document.activeElement;
+  return D && document.visibilityState === 'visible' && !$('#modal').open && !document.querySelector('details[open]')
+    && !(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+}
+async function softRefresh() {
+  if (!canRefresh()) return;
+  try {
+    const r = await fetch('/api/all');
+    if (r.status === 401) { location.href = '/login'; return; }
+    if (!r.ok) return;
+    const txt = await r.text(); lastLoad = Date.now();
+    if (txt === lastSig || !canRefresh()) return; // لا جديد
+    D = JSON.parse(txt); lastSig = txt;
+    const y = window.scrollY; render(); window.scrollTo(0, y);
+  } catch { /* بدون إنترنت: نحاول لاحقاً */ }
+}
+setInterval(softRefresh, 60 * 1000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (Date.now() - lastLoad > 15 * 1000) softRefresh();
+  navigator.serviceWorker?.getRegistration().then(r => r && r.update()).catch(() => {});
+});
+window.addEventListener('online', softRefresh);
 async function act(method, url, body, okMsg) {
   const r = await api(method, url, body);
   if (r) { if (okMsg) toast(okMsg); await load(); }
