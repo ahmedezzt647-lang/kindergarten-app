@@ -375,6 +375,8 @@ function openStudent(id) {
       ${pays.length ? pays.map(p => `<div class="list-row"><div>إيصال <b class="num">${p.receiptNo}</b> <span class="muted">· ${esc(p.date)} · ${esc(p.method)}</span></div><div class="actions"><b>${money(p.amount)}</b><button type="button" class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button></div></div>`).join('') : '<p class="muted">لا توجد دفعات</p>'}</fieldset>
     ${books.length ? `<fieldset><legend>الكتب (منفصلة عن الرسوم)</legend>${books.map(x => `<div class="list-row"><span>${esc(x.title)} <span class="muted">${esc(fmtDate(x.date))}</span> ${x.paid ? '<span class="tag ok">سدّد</span>' : N(x.paidAmount) ? `<span class="tag warn">باقي ${fmt(N(x.price) - N(x.paidAmount))}</span>` : '<span class="tag bad">لم يسدّد</span>'}</span>
       <span class="actions"><b>${money(x.price)}</b>${x.paid ? '' : `<button type="button" class="btn sm primary" onclick="bookPay('${x.id}')">سداد</button>`}</span></div>`).join('')}</fieldset>` : ''}
+    ${(() => { const gs = D.assessments.filter(g => g.studentId === id).sort((a, b) => b.week - a.week).slice(0, 12);
+      return gs.length ? `<fieldset><legend>آخر التقييمات</legend>${gs.map(g => `<div class="list-row"><span>${esc(g.subject)} <span class="muted">الأسبوع ${g.week}</span>${g.level ? ` <span class="tag info">${esc(g.level)}</span>` : ''}</span><b>${g.score ?? '—'} / ${g.max || 10}</b></div>`).join('')}</fieldset>` : ''; })()}
     ${notes.length ? `<fieldset><legend>آخر الملاحظات</legend>${notes.map(n => `<div class="list-row"><span><span class="tag mute">${esc(n.type)}</span> ${esc(n.text)}</span><span class="muted">${esc(n.date)}</span></div>`).join('')}</fieldset>` : ''}
 
     <div class="modal-actions">
@@ -391,6 +393,7 @@ function studentForm(id) {
     <fieldset><legend>الطفل</legend><div class="grid g2">
       <label class="f">الاسم الثلاثي *<input name="name" required value="${v('name')}"></label>
       <label class="f">الصف<input name="grade" list="cls-list" value="${v('grade')}" placeholder="اختر أو اكتب صفاً"><datalist id="cls-list">${classes().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+      <label class="f">المستوى الدراسي (للصفوف متعددة المستويات)<select name="level"><option value="">—</option>${Object.entries(Curriculum.TRACKS).map(([k, T]) => `<option value="${k}" ${s.level === k ? 'selected' : ''}>${esc(T.name)}</option>`).join('')}</select></label>
     </div></fieldset>
     <fieldset><legend>ولي الأمر</legend><div class="grid g2">
       <label class="f">اسم ولي الأمر<input name="parent_name" value="${v('parent_name')}"></label>
@@ -851,7 +854,7 @@ function dayStats(cls, date) {
 }
 
 VIEWS.teach = () => {
-  const tabs = [['today', 'مهام اليوم'], ['plan', 'الخطة السنوية'], ['progress', 'متابعة الإنجاز'], ['setup', 'إعداد العام الدراسي']];
+  const tabs = [['today', 'مهام اليوم'], ['plan', 'الخطة السنوية'], ['exams', 'الامتحانات الأسبوعية'], ['grades', 'التقييمات'], ['progress', 'متابعة الإنجاز'], ['setup', 'إعداد العام الدراسي']];
   UI.teachTab ||= 'today';
   return `<div class="head"><div><h1>التعليم</h1><p>الخطة الدراسية ومهام المعلمين اليومية</p></div>
     <div class="actions"><button class="btn" onclick="print()">طباعة</button></div></div>
@@ -886,7 +889,8 @@ const TEACH = {
           <label class="chk"><input type="checkbox" ${lg?.done ? 'checked' : ''} onchange="teachDone('${t}','${esc(s.name)}',this.checked)"><span></span></label>
           <div class="body"><div class="subj">${esc(s.name)}</div>
             <div class="topic">${esc(tp.text)}${tp.edited ? ' <span class="tag info">معدّل</span>' : ''}</div>
-            <div class="what"><b>مهمة اليوم: ${TEACH_DAYS[di]}</b><ul>${acts.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+            <div class="what"><b>مهمة اليوم: ${TEACH_DAYS[di]}</b><ul>${acts.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+              <div class="actions" style="margin-top:8px"><button class="btn sm primary" onclick="openLesson('${t}','${esc(s.name)}',${week})">📖 الشرح الكامل والأسئلة</button>${di === 4 ? `<button class="btn sm" onclick="openExam('${t}','${esc(s.name)}',${week})">📝 امتحان الأسبوع</button><button class="btn sm" onclick="UI.teachTab='grades';UI.grTrack='${t}';UI.grSubject='${esc(s.name)}';UI.grWeek=${week};render()">إدخال الدرجات</button>` : ''}</div></div>
             <input class="note" placeholder="ملاحظة المعلم (اختياري): ماذا تم؟ من يحتاج متابعة؟" value="${esc(lg?.note || '')}" onchange="teachNote('${t}','${esc(s.name)}',this.value)">
           </div></div>`; }).join('')}
       </section>`; }).join('')}`;
@@ -902,6 +906,46 @@ const TEACH = {
       ${T.subjects.map(s => { const tp = topicFor(t, s.name, w); return `<td class="click-cell${tp.edited ? ' edited' : ''}" onclick="editTopic('${t}','${esc(s.name)}',${w})">${esc(tp.text)}</td>`; }).join('')}</tr>`).join('')}
     </tbody></table></div>
     <p class="muted">خطة مقترحة مبنية على هيكل المنهج ${esc(T.system === 'سعودي' ? 'السعودي' : 'المصري')} ومقسّمة على ${a.weeks} أسبوعاً. طابِقها مع توزيع الوزارة وعدّل ما يلزم؛ الموضوعات المعدّلة مظللة.</p></section>`;
+  },
+  exams() {
+    const list = teachClasses(); if (!list.length) return '<p class="empty">لا توجد صفوف مربوطة بخطة.</p>';
+    const a = acad(); UI.exWeek ||= Math.max(1, Math.min(a.weeks, weekOf(D.today)));
+    const w = UI.exWeek;
+    return `<div class="filters"><select onchange="UI.exWeek=+this.value;render()" aria-label="الأسبوع">${Array.from({ length: a.weeks }, (_, i) => i + 1).map(x => `<option value="${x}" ${x === w ? 'selected' : ''}>الأسبوع ${x}${x === weekOf(D.today) ? ' (الحالي)' : ''}</option>`).join('')}</select></div>
+    ${list.map(c => `<section class="panel"><h2>${esc(c)}</h2>${tracksFor(c).map(t => Curriculum.TRACKS[t].subjects.map(s => { const u = baseUnit(t, s.name, w), L = getLesson(t, s.name, u);
+      return `<div class="list-row"><div><b>${esc(Curriculum.TRACKS[t].short)} — ${esc(s.name)}</b><div class="muted">${esc(u)}</div></div>
+      <div class="actions">${L && L.quiz && L.quiz.length ? `<span class="tag ok">${L.quiz.length} سؤال</span><button class="btn sm primary" onclick="openExam('${t}','${esc(s.name)}',${w})">طباعة الامتحان</button>` : '<span class="tag mute">لم يُكتب بعد</span>'}
+      <button class="btn sm" onclick="UI.teachTab='grades';UI.grTrack='${t}';UI.grSubject='${esc(s.name)}';UI.grWeek=${w};render()">الدرجات</button></div></div>`; }).join('')).join('')}</section>`).join('')}`;
+  },
+  grades() {
+    const tracks = Object.keys(Curriculum.TRACKS), a = acad();
+    UI.grTrack ||= tracksFor(teachClasses()[0] || '')[0] || tracks[0];
+    const t = UI.grTrack, T = Curriculum.TRACKS[t];
+    if (!T.subjects.some(s => s.name === UI.grSubject)) UI.grSubject = T.subjects[0].name;
+    UI.grWeek ||= Math.max(1, Math.min(a.weeks, weekOf(D.today)));
+    const sub = UI.grSubject, w = UI.grWeek;
+    const studs = studentsOfTrack(t);
+    const L = getLesson(t, sub, baseUnit(t, sub, w)); const max = L?.quiz?.length ? L.quiz.length * 2 : 10;
+    return `<div class="filters">
+      <select onchange="UI.grTrack=this.value;render()" aria-label="المستوى">${tracks.map(k => `<option value="${k}" ${k === t ? 'selected' : ''}>${esc(Curriculum.TRACKS[k].name)}</option>`).join('')}</select>
+      <select onchange="UI.grSubject=this.value;render()" aria-label="المادة">${T.subjects.map(s => `<option ${s.name === sub ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+      <select onchange="UI.grWeek=+this.value;render()" aria-label="الأسبوع">${Array.from({ length: a.weeks }, (_, i) => i + 1).map(x => `<option value="${x}" ${x === w ? 'selected' : ''}>الأسبوع ${x}</option>`).join('')}</select></div>
+    <form class="panel" onsubmit="saveGrades(event,'${t}','${esc(sub)}',${w})"><h2>درجات ${esc(sub)} — الأسبوع ${w} <span class="muted">${esc(baseUnit(t, sub, w))}</span></h2>
+    ${studs.length ? `<div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الدرجة</th><th>من</th><th>المستوى</th><th>ملاحظة</th></tr></thead><tbody>
+    ${studs.map(s => { const g = D.assessments.find(x => x.studentId === s.id && x.track === t && x.subject === sub && x.week === w) || {};
+      return `<tr><td><b>${esc(s.name)}</b>${!s.level && tracksFor(s.grade).length > 1 ? ' <span class="tag warn" title="حدد مستوى الطالب من تعديل بياناته">بدون مستوى</span>' : ''}</td>
+      <td><input type="number" name="score_${s.id}" min="0" step="0.5" value="${g.score ?? ''}" style="width:90px"></td>
+      <td><input type="number" name="max_${s.id}" min="1" value="${g.max || max}" style="width:80px"></td>
+      <td><select name="level_${s.id}" style="min-width:130px">${['', ...LEVELS].map(l => `<option ${g.level === l ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td><input name="note_${s.id}" value="${esc(g.note || '')}" placeholder="اختياري"></td></tr>`; }).join('')}
+    </tbody></table></div><div class="actions" style="margin-top:12px"><button class="btn primary">حفظ الدرجات</button>${L?.quiz?.length ? `<button type="button" class="btn" onclick="openExam('${t}','${esc(sub)}',${w})">طباعة الامتحان</button>` : ''}</div>`
+      : '<p class="empty">لا يوجد طلاب في هذا المستوى. حدد مستوى الطلاب من صفحة الطلاب ← تعديل البيانات.</p>'}
+    </form>
+    ${studs.length ? `<section class="panel"><h2>ملخص ${esc(sub)} لكل طالب</h2><div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>عدد الامتحانات</th><th>المتوسط</th><th>آخر مستوى</th></tr></thead><tbody>
+      ${studs.map(s => { const gs = D.assessments.filter(x => x.studentId === s.id && x.track === t && x.subject === sub && x.score !== null && x.score !== undefined).sort((a, b) => b.week - a.week);
+        const avg = gs.length ? Math.round(gs.reduce((a, g) => a + g.score / (g.max || 10), 0) / gs.length * 100) : null;
+        return `<tr><td>${esc(s.name)}</td><td class="num">${gs.length}</td><td>${avg === null ? '—' : `<span class="tag ${avg >= 85 ? 'ok' : avg >= 60 ? 'warn' : 'bad'}">${avg}٪</span>`}</td><td>${esc(gs[0]?.level || '—')}</td></tr>`; }).join('')}
+      </tbody></table></div></section>` : ''}`;
   },
   progress() {
     const list = teachClasses(); const days = []; let d = dayIdx(D.today) > 4 ? nextSchoolDay(D.today, -1) : D.today;
@@ -924,6 +968,61 @@ const TEACH = {
     <p class="muted">لتغيير مستويات صف: الإعدادات ← الصفوف ← تعديل.</p></section>`;
   },
 };
+const LEVELS = ['ممتاز', 'جيد جداً', 'جيد', 'مقبول', 'يحتاج متابعة'];
+// عنوان الوحدة الأصلي للأسبوع (الشرح مربوط به حتى لو عُدّل اسم الموضوع)
+function baseUnit(track, subject, week) {
+  const sub = Curriculum.TRACKS[track].subjects.find(s => s.name === subject);
+  return Curriculum.unitForWeek(sub.units, week, acad().weeks) || '';
+}
+// طلاب مستوى معيّن: من صفوف هذا المستوى، ومن حُدد مستواه به (أو لم يُحدد إن كان الصف متعدد المستويات)
+function studentsOfTrack(track) {
+  return active().filter(s => { const tr = tracksFor(s.grade); if (!tr.includes(track)) return false; return tr.length === 1 || !s.level || s.level === track; })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ar'));
+}
+function lessonHtml(track, subject, week, L) {
+  const T = Curriculum.TRACKS[track], u = baseUnit(track, subject, week), tp = topicFor(track, subject, week);
+  if (!L) return `<h2>${esc(subject)} — ${esc(tp.text)}</h2><p class="muted">${esc(T.name)} · الأسبوع ${week}</p>
+    <div class="note-box">لم يُكتب الشرح الكامل لهذا الدرس بعد. استخدم الأنشطة المقترحة في مهمة اليوم، أو اطلب كتابته.</div>`;
+  const list = (title, arr) => arr && arr.length ? `<fieldset><legend>${title}</legend><ul class="lesson-ul">${arr.map(x => `<li>${esc(x)}</li>`).join('')}</ul></fieldset>` : '';
+  return `<h2>${esc(subject)} — ${esc(u)}</h2><p class="muted" style="margin-top:-10px">${esc(T.name)} · الأسبوع ${week}${tp.edited ? ` · الموضوع المعدّل: ${esc(tp.text)}` : ''}</p>
+    ${list('🎯 أهداف الدرس', L.goals)}${list('🧰 الأدوات والوسائل', L.materials)}
+    <fieldset><legend>👩‍🏫 الشرح خطوة بخطوة</legend>${(L.steps || []).map(([h, txt], i) => `<div class="step"><b>${i + 1}. ${esc(h)}</b><p>${esc(txt).replace(/\n/g, '<br>')}</p></div>`).join('')}</fieldset>
+    ${L.qa && L.qa.length ? `<fieldset><legend>❓ أسئلة وأجوبة للمناقشة</legend>${L.qa.map(([q, a]) => `<details class="qa"><summary><bdi>${esc(q)}</bdi></summary><p>✅ <bdi>${esc(a)}</bdi></p></details>`).join('')}</fieldset>` : ''}
+    ${L.quiz && L.quiz.length ? `<fieldset><legend>📝 أسئلة التقييم (${L.quiz.length})</legend>${L.quiz.map((x, i) => `<div class="step"><b>${i + 1}. <bdi>${esc(x.q)}</bdi></b>${x.o ? `<div class="muted">${x.o.map(o => `<bdi>${esc(o)}</bdi>`).join(' · ')}</div>` : ''}<div class="money-ok">الإجابة: <bdi>${esc(x.a)}</bdi></div></div>`).join('')}</fieldset>` : ''}
+    ${L.hw ? `<fieldset><legend>🏠 الواجب</legend><p>${esc(L.hw)}</p></fieldset>` : ''}`;
+}
+function openLesson(track, subject, week) {
+  const L = getLesson(track, subject, baseUnit(track, subject, week));
+  modal(`<div class="lesson">${lessonHtml(track, subject, week, L)}</div>
+    <div class="modal-actions"><button class="btn" value="cancel">إغلاق</button>${L ? `<button type="button" class="btn" onclick="printLesson('${track}','${esc(subject)}',${week})">طباعة الشرح</button>` : ''}${L?.quiz?.length ? `<button type="button" class="btn primary" onclick="openExam('${track}','${esc(subject)}',${week})">📝 امتحان الأسبوع</button>` : ''}</div>`);
+}
+function printLesson(track, subject, week) {
+  const L = getLesson(track, subject, baseUnit(track, subject, week));
+  printDoc(`شرح درس — ${subject}`, `<div class="lesson">${lessonHtml(track, subject, week, L)}</div>
+    <style>fieldset{border:1px solid #DCE5E3;border-radius:10px;margin:12px 0;padding:10px 14px}legend{font-weight:700;color:#145741}.step{margin:8px 0}details{margin:6px 0}details p{margin:4px 0 0}</style>
+    <script>document.querySelectorAll('details').forEach(d=>d.open=true)<\/script>`);
+}
+function openExam(track, subject, week) {
+  const T = Curriculum.TRACKS[track], u = baseUnit(track, subject, week), L = getLesson(track, subject, u);
+  if (!L || !L.quiz || !L.quiz.length) return toast('لا توجد أسئلة لهذا الدرس بعد', true);
+  const per = 2, total = L.quiz.length * per;
+  const qs = L.quiz.map((x, i) => `<div class="q" dir="auto"><b>${i + 1}. ${esc(x.q)}</b> <span class="pts">(${per} درجة)</span>
+    ${x.o ? `<div class="opts">${x.o.map(o => `<span>◯ ${esc(o)}</span>`).join('')}</div>` : '<div class="line"></div><div class="line"></div>'}</div>`).join('');
+  printDoc(`امتحان الأسبوع ${week} — ${subject}`, `
+    <table><tr><th>اسم الطالب</th><td style="width:45%"></td><th>الصف</th><td>${esc(T.name)}</td></tr>
+    <tr><th>الدرس</th><td dir="auto">${esc(u)}</td><th>الدرجة</th><td>&nbsp;&nbsp;&nbsp;&nbsp;/ ${total}</td></tr></table>
+    ${qs}
+    <div style="page-break-before:always"></div>
+    <h2>نموذج الإجابة — للمعلم</h2>
+    <table>${L.quiz.map((x, i) => `<tr><th style="width:40px">${i + 1}</th><td dir="auto">${esc(x.q)}</td><td dir="auto"><b>${esc(x.a)}</b></td></tr>`).join('')}</table>
+    <style>.q{margin:16px 0;page-break-inside:avoid}.pts{color:#7D8B99;font-size:13px}.opts{display:flex;flex-wrap:wrap;gap:22px;margin-top:8px}.line{border-bottom:1px dotted #999;height:28px}</style>`);
+}
+async function saveGrades(e, track, subject, week) {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  const rows = studentsOfTrack(track).map(s => ({ studentId: s.id, score: d['score_' + s.id], max: d['max_' + s.id], level: d['level_' + s.id], note: d['note_' + s.id] }));
+  await act('POST', '/api/assessments', { track, subject, week, rows }, 'تم حفظ الدرجات');
+}
 async function teachDone(track, subject, done) {
   const date = UI.teachDate, l = logOf(date, track, subject);
   if (l) l.done = done; else D.teachLogs.push({ date, track, subject, done });

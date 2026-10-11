@@ -11,6 +11,7 @@
 - `public/admin.js` كل شاشات اللوحة (`VIEWS.*`) — مساعدات: `esc`, `money`, `fmt`, `modal`, `act`, `api`.
 - `public/theme.js` المظهر (ألوان/حجم خط `--fs`/خط/وضع ليلي/صور) من `settings.appearance`، والصور في مجموعة `assets` وتُقدَّم من `/img/<logo|banner|loginBg>`.
 - `shared/curriculum.js` الخطة الدراسية المقترحة لكل مستوى (kg1, kg2, g1, g2, g3 مصري؛ m1, m2 سعودي) وربط الصفوف بالمستويات. تعديلات الأسابيع في `planedits`، وإنجاز المعلم في `teachlogs`، وبداية العام في `settings.academic`. شاشة `VIEWS.teach`.
+- `shared/lessons/<track>.js` الشرح الكامل لكل درس عبر `addLessons(track, subject, {عنوان الوحدة كما في curriculum: {goals, materials, steps[5 أيام], qa, quiz[{q,o|null,a}], hw}})`. المكتوب حالياً: الأسبوعان 6 و7 لكل المستويات (الباقي يُكتب على دفعات). المسار السعودي (m1, m2) رياضيات وإنجليزي فقط. الامتحان الأسبوعي يُطبع من `quiz` (درجتان لكل سؤال + نموذج إجابة)، والدرجات في `assessments` وتظهر في بوابة ولي الأمر. مستوى الطالب في الصف متعدد المستويات في `student.level`.
 - `views/portal.html` بوابة ولي الأمر. التطبيق (PWA): `public/manifest.webmanifest` و `public/sw.js` (يُقدَّم من `/sw.js`) و `public/icons/`. `dev.js` + `views/updates.html` تعديل البرنامج من الداخل (لا تُعدَّل ذاتياً).
 
 ## قواعد الحساب (اتفق عليها صاحب الروضة)

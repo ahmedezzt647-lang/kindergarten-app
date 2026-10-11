@@ -72,6 +72,8 @@ const typeIcon = { 'سلوك':'🌟', 'وجبات':'🍎', 'نوم':'😴', 'ت�
       : '<p class="empty">لا توجد سجلات حضور بعد</p>'}
     </section>
 
+    ${d.grades && d.grades.length ? `<section class="panel"><h2>التقييمات الأسبوعية</h2>${d.grades.map(g => `<div class="row"><div>${esc(g.subject)} <span class="muted">الأسبوع ${g.week}</span>${g.level ? ` <span class="tag info">${esc(g.level)}</span>` : ''}${g.note ? `<div class="muted">${esc(g.note)}</div>` : ''}</div><b class="num">${g.score ?? '—'} / ${g.max || 10}</b></div>`).join('')}</section>` : ''}
+
     <section class="panel"><h2>ملاحظات المعلمة</h2>
       ${d.notes.length ? d.notes.map(n => `<div class="row"><div>${typeIcon[n.type] || '📝'} ${esc(n.text)}${n.mood ? ` <span class="tag mute">${esc(n.mood)}</span>` : ''}</div><span class="muted">${esc(n.date)}</span></div>`).join('') : '<p class="empty">لا توجد ملاحظات بعد</p>'}
     </section>

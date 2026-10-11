@@ -44,6 +44,9 @@ const Settings = mongoose.model('Settings', new S({
 // إنجاز المعلم لمهمة اليوم (مادة واحدة لمستوى واحد في يوم واحد)
 const TeachLog = mongoose.model('TeachLog', new S({ date: { type: String, index: true }, track: String, subject: String, done: Boolean, note: String }, opt));
 // تعديل موضوع أسبوع في الخطة (يتقدم على الخطة المقترحة في shared/curriculum.js)
+// تقييم طالب: درجة الامتحان الأسبوعي ومستواه في مادة لأسبوع معيّن
+const Assessment = mongoose.model('Assessment', new S({ studentId: { type: String, index: true }, track: String, subject: String, week: Number,
+  score: Number, max: { type: Number, default: 10 }, level: String, note: String, date: String }, opt));
 const PlanEdit = mongoose.model('PlanEdit', new S({ track: String, subject: String, week: Number, topic: String }, opt));
 
 // صور الموقع (الشعار، صورة الرئيسية، خلفية الدخول) — تُخزَّن في القاعدة حتى لا تضيع مع إعادة النشر
@@ -60,6 +63,7 @@ const Student = mongoose.model('Student', new S({
   status: { type: String, default: 'active' }, inactive_date: String,
   allergies: String, medical_notes: String, emergency_contact: String, authorized_pickup: String,
   notes: String, portalToken: String,
+  level: String, // مستوى الطالب في الخطة الدراسية عند وجود أكثر من مستوى في الصف (مثل kg1 / kg2)
 }, opt));
 
 const Payment = mongoose.model('Payment', new S({
@@ -241,12 +245,13 @@ app.get('/api/portal/:token', wrap(async (req, res) => {
   const st = await Student.findOne({ portalToken: req.params.token });
   if (!st || !req.params.token) return res.status(404).json({ error: 'الرابط غير صالح' });
   const s = await getSettings();
-  const [payments, books, attendance, notes, ann] = await Promise.all([
+  const [payments, books, attendance, notes, ann, grades] = await Promise.all([
     Payment.find({ studentId: st.id }).sort({ date: -1 }),
     Book.find({ studentId: st.id }),
     Attendance.find({ studentId: st.id }).sort({ date: -1 }).limit(60),
     Note.find({ studentId: st.id, shared: true }).sort({ date: -1, createdAt: -1 }).limit(30),
     Announcement.find({ audience: { $in: ['all', st.grade] } }).sort({ date: -1 }).limit(10),
+    Assessment.find({ studentId: st.id }).sort({ week: -1 }).limit(40),
   ]);
   const bal = Finance.studentBalance(st, payments, books, { halfMonthAfterDay: s.halfMonthAfterDay });
   res.json({
@@ -258,6 +263,7 @@ app.get('/api/portal/:token', wrap(async (req, res) => {
     attendance: attendance.map(a => ({ date: a.date, status: a.status, checkIn: a.checkIn, checkOut: a.checkOut })),
     notes: notes.map(n => ({ date: n.date, type: n.type, text: n.text, mood: n.mood })),
     announcements: ann.map(a => ({ title: a.title, body: a.body, date: a.date, eventDate: a.eventDate })),
+    grades: grades.map(g => ({ subject: g.subject, week: g.week, score: g.score, max: g.max, level: g.level, note: g.note })),
   });
 }));
 
@@ -272,16 +278,16 @@ require('./dev')(app, wrap, newId, today);
 app.get('/api/all', wrap(async (req, res) => {
   const s = await getSettings();
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const [students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits] = await Promise.all([
+  const [students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits, assessments] = await Promise.all([
     Student.find().sort({ name: 1 }), Payment.find().sort({ date: -1, createdAt: -1 }),
     Expense.find().sort({ date: -1, createdAt: -1 }),
     Attendance.find({ date: { $gte: new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10) } }),
     Book.find().sort({ date: -1 }), Staff.find().sort({ name: 1 }),
     Note.find().sort({ date: -1, createdAt: -1 }).limit(500), Announcement.find().sort({ date: -1 }),
-    TeachLog.find({ date: { $gte: since } }), PlanEdit.find(),
+    TeachLog.find({ date: { $gte: since } }), PlanEdit.find(), Assessment.find(),
   ]);
   const settings = s.toObject(); delete settings.passwordHash;
-  res.json({ settings, students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits, today: today() });
+  res.json({ settings, students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits, assessments, today: today() });
 }));
 
 // ---- التعليم ----
@@ -293,6 +299,18 @@ app.post('/api/teach/log', wrap(async (req, res) => {
   if (typeof req.body.note === 'string') set.note = req.body.note.slice(0, 500);
   const doc = await TeachLog.findOneAndUpdate({ date, track, subject }, { $set: set }, { upsert: true, new: true });
   res.json(doc);
+}));
+app.post('/api/assessments', wrap(async (req, res) => {
+  const { track, subject } = req.body, week = parseInt(req.body.week), rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (!track || !subject || !(week >= 1)) return res.status(400).json({ error: 'بيانات ناقصة' });
+  for (const r of rows) {
+    if (!r.studentId) continue;
+    const score = r.score === '' || r.score === null || r.score === undefined ? null : parseFloat(r.score);
+    if ((score === null || isNaN(score)) && !r.level && !r.note) { await Assessment.deleteOne({ studentId: r.studentId, track, subject, week }); continue; }
+    await Assessment.updateOne({ studentId: r.studentId, track, subject, week },
+      { $set: { score: isNaN(score) ? null : score, max: parseFloat(r.max) || 10, level: r.level || '', note: String(r.note || '').slice(0, 300), date: today() } }, { upsert: true });
+  }
+  res.json({ ok: true });
 }));
 app.put('/api/plan/edit', wrap(async (req, res) => {
   const { track, subject } = req.body, week = parseInt(req.body.week);
@@ -362,7 +380,7 @@ app.put('/api/settings/password', wrap(async (req, res) => {
 }));
 
 // ---- الطلاب ----
-const studentFields = ['name', 'grade', 'gender', 'birth_date', 'parent_name', 'parent_phone', 'parent_phone2', 'join_date',
+const studentFields = ['level', 'name', 'grade', 'gender', 'birth_date', 'parent_name', 'parent_phone', 'parent_phone2', 'join_date',
   'monthlyFee', 'discount', 'oneTimeDiscount', 'oneTimeDiscountNote', 'allergies', 'medical_notes', 'emergency_contact', 'authorized_pickup', 'notes'];
 const pick = (body, fields) => { const o = {}; for (const f of fields) if (f in body) o[f] = typeof body[f] === 'string' ? body[f].trim() : body[f]; return o; };
 
@@ -397,7 +415,7 @@ app.put('/api/students/:id/portal', wrap(async (req, res) => {
 app.delete('/api/students/:id', wrap(async (req, res) => {
   const id = req.params.id;
   await Promise.all([Student.deleteOne({ id }), Payment.deleteMany({ studentId: id }), Book.deleteMany({ studentId: id }),
-    Attendance.deleteMany({ studentId: id }), Note.deleteMany({ studentId: id })]);
+    Attendance.deleteMany({ studentId: id }), Note.deleteMany({ studentId: id }), Assessment.deleteMany({ studentId: id })]);
   res.json({ ok: true });
 }));
 
