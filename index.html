@@ -88,7 +88,7 @@
         <div class="card orange" onclick="showBox('books-details-box')"><h3>مبيعات الكتب 🔍</h3><div class="number" id="total-books-sales">0 ر.س</div><div class="hint">الكتب الآجلة</div></div>
         <div class="card green" onclick="showBox('revenue-details-box')"><h3>المقبوضات 🔍</h3><div class="number" id="total-revenue">0 ر.س</div><div class="hint">سجل التحصيل</div></div>
         <div class="card red" onclick="showBox('expense-details-box')"><h3>المصروفات 🔍</h3><div class="number" id="total-expenses">0 ر.س</div><div class="hint">سجل النفقات</div></div>
-        <div class="card purple" onclick="showBox('profit-details-box')">### صافي الربح 🔍</h3><div class="number" id="net-profit">0 ر.س</div><div class="hint">التقرير المالي</div></div>
+        <div class="card purple" onclick="showBox('profit-details-box')"><h3>صافي الربح 🔍</h3><div class="number" id="net-profit">0 ر.س</div><div class="hint">التقرير المالي</div></div>
       </div>
 
       <div id="books-details-box" class="details-box"><div class="section-title orange"><span>📚 سجل مبيعات الكتب</span><button class="btn-toggle" onclick="hideBox('books-details-box')">إغلاق ✖</button></div><div class="table-responsive"><table><thead><tr><th>#</th><th>اسم الطالب</th><th>الكتاب</th><th>السعر</th><th>التاريخ</th><th>حذف</th></tr></thead><tbody id="books-table"></tbody></table></div></div>
@@ -166,10 +166,10 @@
       try { await fetch(url, { method: 'DELETE' }); } catch(e) {}
     }
 
-    // المعادلة الصحيحة للإدارة المالية:
-    // 1. شهر الالتحاق: إذا كان بعد يوم 15 -> نصف شهر (netMonthly / 2)، إذا قبل يوم 16 -> شهر كامل.
-    // 2. الشهور الكاملة اللاحقة بين شهر الالتحاق والشهر السابق للحالي -> شهور كاملة.
-    // 3. الشهر الحالي (أكتوبر) -> يُضاف دائماً كشهر كامل مقدماً.
+    // المعادلة الصحيحة المحسوبة بدقة تامة:
+    // 1. شهر الالتحاق: إذا كان بعد يوم 15 -> نصف شهر (netMonthly / 2). إذا كان قبل 16 -> شهر كامل.
+    // 2. الشهور اللاحقة الكاملة الفاصلة -> شهور كاملة (netMonthly لكل شهر).
+    // 3. الشهر الحالي (أكتوبر) -> يُضاف كاملاً كمقدمة.
     function calculateStudentFinancials(s, booksList) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -189,14 +189,15 @@
       let descText = '';
 
       if (joinYear === nowYear && joinMonth === nowMonth) {
+        // التحاق في نفس الشهر الحالي
         const partCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
         totalTuition = Math.round(partCost);
         descText = joinDay > 15 ? 'نصف الشهر الحالي' : 'الشهر الحالي كامل';
       } else {
-        // شهر الالتحاق الأول
+        // شهر الالتحاق الأول (إذا بعد 15 = نصف شهر، إذا قبل = شهر كامل)
         const firstMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
 
-        // عدد الشهور الكاملة تماماً بين شهر الالتحاق والشهر الذي يسبق الشهر الحالي
+        // الشهور الكاملة بين شهر الالتحاق والشهر السابق للشهر الحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
