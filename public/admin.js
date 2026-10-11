@@ -7,7 +7,7 @@ const UI = { finTab: 'payments', attDate: null, attClass: '', stQ: '', stClass: 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const N = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
-const fmt = n => Math.round(N(n)).toLocaleString('en-US');
+const fmt = n => (Math.round(N(n) * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const cur = () => D?.settings?.currency || 'ر.س';
 const money = n => `<span class="num">${fmt(n)}</span> ${cur()}`;
 const initial = name => (String(name || '؟').trim()[0] || '؟');

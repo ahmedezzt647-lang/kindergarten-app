@@ -26,7 +26,7 @@
     const firstFactor = jd <= cutoff ? 1 : days / 30;
     const firstLabel = firstFactor === 1 ? 'شهر الالتحاق كامل' : `${days} يوم من شهر الالتحاق`;
     const monthsAfter = (end.getFullYear() - join.getFullYear()) * 12 + (end.getMonth() - join.getMonth());
-    const tuition = Math.round(net * firstFactor + Math.max(0, monthsAfter) * net);
+    const tuition = Math.round((net * firstFactor + Math.max(0, monthsAfter) * net) * 100) / 100;
     const desc = monthsAfter <= 0 ? firstLabel : `${firstLabel} + ${monthsAfter} شهر`;
     return { tuition, months: firstFactor + Math.max(0, monthsAfter), desc, net };
   }
