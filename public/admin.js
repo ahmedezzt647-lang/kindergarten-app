@@ -593,31 +593,67 @@ function noteForm(sid) {
 }
 
 /* ---------- التقارير ---------- */
+// رسوم كل شهر لوحده لكل طالب، وتوزيع المدفوع على الأشهر من الأقدم للأحدث
+const monthEnd = m => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo, 0, 12); };
+const prevMonth = m => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+function monthDue(s, m) {
+  const upto = x => Finance.calcTuition(s, { ...opts(), now: monthEnd(x) }).tuition;
+  const books = sumBy(D.books.filter(b => b.studentId === s.id && monthOf(b.date) === m), b => b.price);
+  return Math.round((upto(m) - upto(prevMonth(m)) + books) * 100) / 100;
+}
+function allocation(s) {
+  const ms = activeMonths().filter(m => s.join_date && m >= monthOf(s.join_date));
+  let credit = sumBy(D.payments.filter(p => p.studentId === s.id), p => p.amount) + N(s.oneTimeDiscount);
+  const out = {};
+  for (const m of ms) { const due = monthDue(s, m); const covered = Math.max(0, Math.min(due, credit)); credit -= covered; out[m] = { due, covered, left: Math.round((due - covered) * 100) / 100 }; }
+  return out;
+}
 VIEWS.reports = () => {
+  const months = activeMonths();
+  if (!months.includes(UI.repMonth)) UI.repMonth = months[months.length - 1];
   const m = UI.repMonth;
+  const P = partners();
   const pays = D.payments.filter(p => monthOf(p.date) === m), exps = D.expenses.filter(e => monthOf(e.date) === m);
-  const inc = sumBy(pays, p => p.amount), out = sumBy(exps, e => e.amount);
+  const inc = sumBy(pays, p => p.amount), out = sumBy(exps, e => e.amount), net = inc - out;
   const byMethod = {}; pays.forEach(p => byMethod[p.method || 'نقدي'] = (byMethod[p.method || 'نقدي'] || 0) + N(p.amount));
   const byCat = {}; exps.forEach(e => byCat[e.category || 'أخرى'] = (byCat[e.category || 'أخرى'] || 0) + N(e.amount));
-  const cls = {};
-  active().forEach(s => { const b = bal(s); const c = (cls[s.grade || 'بدون صف'] ||= { n: 0, due: 0, paid: 0 }); c.n++; c.due += b.totalDue; c.paid += b.paid; });
+  // رسوم هذا الشهر لكل طالب
+  const rows = D.students.map(s => { const a = allocation(s)[m]; return a && a.due > 0 ? { s, ...a, paidIn: sumBy(pays.filter(p => p.studentId === s.id), p => p.amount) } : null; }).filter(Boolean)
+    .sort((a, b) => String(a.s.grade).localeCompare(String(b.s.grade), 'ar') || String(a.s.join_date).localeCompare(String(b.s.join_date)) || String(a.s.name).localeCompare(String(b.s.name), 'ar'));
+  const cls = {}; rows.forEach(r => { const c = (cls[r.s.grade || 'بدون صف'] ||= { n: 0, due: 0, covered: 0 }); c.n++; c.due += r.due; c.covered += r.covered; });
+  const dueT = sumBy(rows, r => r.due), covT = sumBy(rows, r => r.covered);
   const joined = D.students.filter(s => monthOf(s.join_date) === m).length;
-  const left = D.students.filter(s => s.status === 'inactive' && monthOf(s.inactive_date) === m).length;
   const kv = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="list-row"><span>${esc(k)}</span><b>${money(v)}</b></div>`).join('') || '<p class="empty">لا يوجد</p>';
-  return `<div class="head"><div><h1>التقارير</h1><p>تقرير ${monthName(m)}</p></div>
-    <div class="actions"><select onchange="UI.repMonth=this.value;render()" style="width:auto" aria-label="الشهر">${lastMonths(12).reverse().map(x => `<option value="${x}" ${x === m ? 'selected' : ''}>${monthName(x)}</option>`).join('')}</select>
-    <button class="btn" onclick="print()">طباعة التقرير</button></div></div>
+  return `<div class="head"><div><h1>التقارير</h1><p>كل شهر لوحده</p></div>
+    <div class="actions"><button class="btn" onclick="print()">طباعة التقرير</button></div></div>
+  <div class="tabs" role="tablist">${months.map(x => `<button role="tab" aria-selected="${x === m}" onclick="UI.repMonth='${x}';render()">${monthName(x)}</button>`).join('')}</div>
+
+  <h2 style="font-size:22px;margin:4px 0 14px">${monthName(m)}</h2>
   <div class="figures">
-    <div class="fig"><span>المقبوضات</span><b class="money-ok">${fmt(inc)}</b><small>${pays.length} إيصال</small></div>
-    <div class="fig"><span>المصروفات</span><b class="money-bad">${fmt(out)}</b><small>${exps.length} بند</small></div>
-    <div class="fig"><span>صافي الربح</span><b>${fmt(inc - out)}</b><small>${cur()}</small></div>
-    <div class="fig"><span>حركة الطلاب</span><b>+${joined} / −${left}</b><small>التحاق / انقطاع</small></div>
+    <div class="fig"><span>المقبوض في ${monthName(m)}</span><b class="money-ok">${fmt(inc)}</b><small>${pays.length} إيصال</small></div>
+    <div class="fig"><span>مصروفات ${monthName(m)}</span><b class="money-bad">${fmt(out)}</b><small>${exps.length} بند</small></div>
+    <div class="fig"><span>صافي ${monthName(m)}</span><b>${fmt(net)}</b><small>${cur()}</small></div>
+    <div class="fig"><span>نصيب الشركاء</span><b style="font-size:19px">${P.map(p => `${esc(p.name)}: ${fmt(net * N(p.share) / 100)}`).join('<br>')}</b><small>${P.map(p => fmt(p.share) + '٪').join(' / ')}</small></div>
   </div>
+
+  <section class="panel"><h2>رسوم ${monthName(m)} <span class="muted">المستحق ${fmt(dueT)} · المحصّل منه ${fmt(covT)} · المتبقي ${fmt(dueT - covT)} ${cur()}</span></h2>
+    <div class="tbl-wrap"><table><thead><tr><th>الصف</th><th>الطلاب</th><th>رسوم الشهر</th><th>المحصّل منها</th><th>المتبقي</th><th>نسبة التحصيل</th></tr></thead><tbody>
+    ${Object.entries(cls).map(([k, c]) => `<tr><td><b>${esc(k)}</b></td><td class="num">${c.n}</td><td>${money(c.due)}</td><td class="money-ok">${money(c.covered)}</td><td class="${c.due - c.covered > 0.009 ? 'money-bad' : 'money-ok'}">${money(c.due - c.covered)}</td><td><span class="tag ${c.due && c.covered / c.due >= .9 ? 'ok' : 'warn'}">${c.due ? Math.round(c.covered / c.due * 100) : 100}٪</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا يوجد</td></tr>'}
+    </tbody></table></div>
+    <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;color:var(--palm-3)">تفاصيل كل طالب في ${monthName(m)} (${rows.length})</summary>
+    <div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الصف</th><th>رسوم الشهر</th><th>المحصّل منها</th><th>المتبقي</th><th>دفعه خلال الشهر</th></tr></thead><tbody>
+    ${rows.map(r => `<tr class="click" onclick="openStudent('${r.s.id}')"><td><b>${esc(r.s.name)}</b>${monthOf(r.s.join_date) === m ? ` <span class="tag info">التحق ${esc(fmtDate(r.s.join_date))}</span>` : ''}</td><td>${esc(r.s.grade || '')}</td><td>${money(r.due)}</td><td class="money-ok">${money(r.covered)}</td><td class="${r.left > 0 ? 'money-bad' : 'money-ok'}">${money(r.left)}</td><td>${r.paidIn ? money(r.paidIn) : '—'}</td></tr>`).join('')}
+    </tbody></table></div></details>
+    <p class="muted">المدفوع يُوزَّع على الأشهر من الأقدم للأحدث: أي دفعة تسدّد الشهر الأقدم أولاً. "المقبوض في الشهر" أعلاه هو ما دخل الصندوق فعلاً خلاله.</p>
+  </section>
+
+  <div class="cols">
+    <section class="panel"><h2>مصروفات ${monthName(m)}</h2>${exps.map(e => `<div class="list-row"><span>${esc(e.title)} <span class="muted">${esc(fmtDate(e.date))}</span></span><b class="money-bad">${money(e.amount)}</b></div>`).join('') || '<p class="empty">لا توجد مصروفات في هذا الشهر</p>'}</section>
+    <div><section class="panel"><h2>المقبوض حسب طريقة الدفع</h2>${kv(byMethod)}</section><section class="panel"><h2>المصروفات حسب البند</h2>${kv(byCat)}</section>
+    <section class="panel"><h2>حركة الطلاب</h2><div class="list-row"><span>التحق في ${monthName(m)}</span><b>${joined}</b></div></section></div>
+  </div>
+
   ${partnersPanel()}
-  <div class="cols"><section class="panel"><h2>الصفوف (الطلاب المستمرون)</h2><div class="tbl-wrap"><table><thead><tr><th>الصف</th><th>الطلاب</th><th>المستحق</th><th>المقبوض</th><th>المتبقي</th><th>نسبة التحصيل</th></tr></thead><tbody>
-    ${Object.entries(cls).map(([k, c]) => `<tr><td><b>${esc(k)}</b></td><td class="num">${c.n}</td><td>${money(c.due)}</td><td class="money-ok">${money(c.paid)}</td><td class="money-bad">${money(c.due - c.paid)}</td><td><span class="tag ${c.due && c.paid / c.due >= .9 ? 'ok' : 'warn'}">${c.due ? Math.round(c.paid / c.due * 100) : 100}٪</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا يوجد</td></tr>'}
-    </tbody></table></div></section>
-    <div><section class="panel"><h2>المقبوضات حسب طريقة الدفع</h2>${kv(byMethod)}</section><section class="panel"><h2>المصروفات حسب البند</h2>${kv(byCat)}</section></div></div>
   <section class="panel"><h2>تصدير ونسخ احتياطي</h2><div class="actions">
     <button class="btn" onclick="exportStudents()">الطلاب (Excel)</button><button class="btn" onclick="csv('payments')">الدفعات (Excel)</button><button class="btn" onclick="csv('expenses')">المصروفات (Excel)</button>
     <a class="btn primary" href="/api/backup" download>تنزيل نسخة احتياطية كاملة</a></div>
@@ -628,7 +664,7 @@ function partnersPanel() {
   const rows = ms.map(monthFin);
   const tot = { inc: sumBy(rows, r => r.inc), out: sumBy(rows, r => r.out) }; tot.net = tot.inc - tot.out;
   const share = (net, p) => net * (N(p.share) / 100);
-  return `<section class="panel"><h2>كل شهر لوحده ونصيب الشركاء <span class="muted">${P.map(p => `${esc(p.name)} ${fmt(p.share)}٪`).join(' · ')}</span></h2>
+  return `<section class="panel"><h2>ملخص كل الأشهر ونصيب الشركاء <span class="muted">${P.map(p => `${esc(p.name)} ${fmt(p.share)}٪`).join(' · ')}</span></h2>
   <div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>المقبوض</th><th>المصروفات</th><th>الصافي</th>${P.map(p => `<th>نصيب ${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
   ${rows.map(r => `<tr${r.m === UI.repMonth ? ' style="background:var(--palm-2)"' : ''}><td><b>${monthName(r.m)}</b></td><td class="money-ok">${money(r.inc)}</td><td class="money-bad">${money(r.out)}</td><td><b>${money(r.net)}</b></td>${P.map(p => `<td><b class="${r.net < 0 ? 'money-bad' : ''}">${money(share(r.net, p))}</b></td>`).join('')}</tr>`).join('')}
   <tr style="border-top:2px solid var(--line)"><td><b>الإجمالي</b></td><td class="money-ok"><b>${money(tot.inc)}</b></td><td class="money-bad"><b>${money(tot.out)}</b></td><td><b>${money(tot.net)}</b></td>${P.map(p => `<td><b>${money(share(tot.net, p))}</b></td>`).join('')}</tr>
