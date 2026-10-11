@@ -338,7 +338,7 @@ function studentForm(id) {
       <label class="f">خصم شهري<input type="number" min="0" name="discount" value="${v('discount') || 0}"></label>
       ${id ? '' : `<label class="f">الدفعة الأولى<input type="number" min="0" name="firstPayment" value="0"></label>
       <label class="f">طريقة الدفع<select name="method">${['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'].map(m => `<option>${m}</option>`).join('')}</select></label>`}
-    </div><p class="muted">الالتحاق حتى يوم ${D.settings.halfMonthAfterDay || 10} من الشهر يُحسب شهراً كاملاً، وبعده نصف شهر.</p></fieldset>
+    </div><p class="muted">الالتحاق حتى يوم ${D.settings.halfMonthAfterDay || 10} من الشهر يُحسب شهراً كاملاً، وبعده يُحسب بالأيام (الرسم ÷ 30 × الأيام المتبقية من الشهر).</p></fieldset>
     <label class="f">ملاحظات<textarea name="notes">${v('notes')}</textarea></label>
     <div class="modal-actions"><button class="btn primary" value="ok">${id ? 'حفظ التعديلات' : 'تسجيل الطالب'}</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
     async data => {
@@ -645,7 +645,7 @@ VIEWS.settings = () => {
     <label class="f">العنوان<input name="address" value="${esc(s.address || '')}"></label>
     <label class="f">الرقم الضريبي (يظهر في الإيصال)<input name="vatNumber" value="${esc(s.vatNumber || '')}"></label>
     <label class="f">العملة<input name="currency" value="${esc(s.currency || 'ر.س')}"></label>
-    <label class="f">الالتحاق بعد يوم كم يُحسب نصف شهر؟<input type="number" min="1" max="28" name="halfMonthAfterDay" value="${s.halfMonthAfterDay || 10}"></label>
+    <label class="f">الالتحاق حتى يوم كم يُحسب شهراً كاملاً؟ (بعده بالأيام)<input type="number" min="1" max="28" name="halfMonthAfterDay" value="${s.halfMonthAfterDay || 10}"></label>
     <label class="f" style="grid-column:1/-1">بنود المصروفات (افصل بفاصلة)<input name="expenseCategories" value="${esc((s.expenseCategories || []).join('، '))}"></label>
   </div><div class="actions" style="margin-top:14px"><button class="btn primary">حفظ</button></div></form>
 

@@ -1,6 +1,7 @@
 // حساب الرسوم المستحقة للطالب — يُستخدم في الخادم وفي المتصفح
 // القاعدة:
-// - يوم الالتحاق <= حد اليوم (افتراضي 10) => شهر الالتحاق رسم كامل، وإلا نصف رسم
+// - يوم الالتحاق <= حد اليوم (افتراضي 10) => شهر الالتحاق رسم كامل
+// - بعده => بالأيام: (30 - يوم الالتحاق) × (الرسم ÷ 30). مثال: يوم 11 ورسم 300 => 19 × 10 = 190
 // - كل شهر بعده يُحسب رسماً كاملاً، والشهر الحالي يُحسب مقدماً
 // - الطالب المنقطع يتوقف احتساب رسومه عند شهر انقطاعه
 (function (root) {
@@ -19,8 +20,11 @@
     const net = Math.max(0, num(s.monthlyFee) - num(s.discount));
     if (end < join) return { tuition: 0, months: 0, desc: 'لم يبدأ بعد' };
 
-    const firstFactor = join.getDate() <= cutoff ? 1 : 0.5;
-    const firstLabel = firstFactor === 1 ? 'شهر الالتحاق كامل' : 'نصف شهر الالتحاق';
+    // حتى يوم الحد: شهر كامل. بعده: بالأيام = (30 - يوم الالتحاق) × (الرسم ÷ 30)
+    const jd = join.getDate();
+    const days = Math.max(0, 30 - jd);
+    const firstFactor = jd <= cutoff ? 1 : days / 30;
+    const firstLabel = firstFactor === 1 ? 'شهر الالتحاق كامل' : `${days} يوم من شهر الالتحاق`;
     const monthsAfter = (end.getFullYear() - join.getFullYear()) * 12 + (end.getMonth() - join.getMonth());
     const tuition = Math.round(net * firstFactor + Math.max(0, monthsAfter) * net);
     const desc = monthsAfter <= 0 ? firstLabel : `${firstLabel} + ${monthsAfter} شهر`;
