@@ -166,7 +166,10 @@
       try { await fetch(url, { method: 'DELETE' }); } catch(e) {}
     }
 
-    // حساب الرسوم بالقاعدة الثابتة (نصف الشهر الأول عند الالتحاق منتصف الشهر + الشهر الجديد مقدمة)
+    // القاعدة المحاسبية الدقيقة:
+    // إذا التحق منتصف الشهر (بعد يوم 15) -> شهر الالتحاق يُحسب نصف شهر (netMonthly / 2)
+    // إذا التحق أول الشهر (قبل يوم 16) -> شهر الالتحاق يُحسب شهراً كاملاً (netMonthly)
+    // ومع حلول أول كل شهر جديد تالي -> يُضاف شهر كامل كاستحقاق جديد (مقدم).
     function calculateStudentFinancials(s, booksList) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
@@ -186,18 +189,26 @@
       let descText = '';
 
       if (joinYear === nowYear && joinMonth === nowMonth) {
-        const partMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
-        totalTuition = Math.round(partMonthCost);
+        // التحاق في نفس الشهر الحالي
+        const partCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
+        totalTuition = Math.round(partCost);
         descText = joinDay > 15 ? 'نصف الشهر الحالي' : 'الشهر الحالي كامل';
       } else {
+        // 1. شهر الالتحاق (إذا بعد 15 = نصف شهر، إذا قبل = شهر كامل)
         const firstMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
+
+        // 2. الشهور الكاملة الفاصلة بين شهر الالتحاق والشهر السابق للحالي
         let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
         if (fullMonths < 0) fullMonths = 0;
         const fullMonthsCost = fullMonths * netMonthly;
+
+        // 3. رسوم الشهر الحالي الجديد (كاملة مقدماً)
         const currentMonthCost = netMonthly;
 
         totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
-        descText = `نصف ش.${joinMonth+1} + ${fullMonths} ش.كامل + ش.${nowMonth+1} مقدم`;
+        
+        const firstLabel = joinDay > 15 ? `نصف ش.${joinMonth+1}` : `ش.${joinMonth+1} كامل`;
+        descText = `${firstLabel} + ${fullMonths} ش.كامل + ش.${nowMonth+1} مقدم`;
       }
 
       const booksTotal = booksList.filter(b => b.studentId === s.id).reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
