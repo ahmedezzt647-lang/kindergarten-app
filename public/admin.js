@@ -11,6 +11,7 @@ const fmt = n => Math.round(N(n)).toLocaleString('en-US');
 const cur = () => D?.settings?.currency || 'ر.س';
 const money = n => `<span class="num">${fmt(n)}</span> ${cur()}`;
 const initial = name => (String(name || '؟').trim()[0] || '؟');
+const fmtDate = d => { if (!d) return '—'; const [y, m, dd] = String(d).split('-'); return dd ? `${+dd}/${+m}/${y}` : d; };
 const monthOf = d => String(d || '').slice(0, 7);
 const monthName = m => { if (!m) return ''; const [y, mo] = m.split('-'); return new Date(+y, +mo - 1, 1).toLocaleDateString('ar-SA-u-ca-gregory', { month: 'long', year: 'numeric' }); };
 const STATUS = { present: 'حاضر', absent: 'غائب', late: 'متأخر', excused: 'غائب بعذر' };
@@ -230,7 +231,8 @@ VIEWS.students = () => {
   const q = UI.stQ.trim();
   const list = D.students.filter(s => (UI.stStatus === 'all' || (UI.stStatus === 'active' ? s.status !== 'inactive' : s.status === 'inactive'))
     && (!UI.stClass || s.grade === UI.stClass)
-    && (!q || [s.name, s.parent_name, s.parent_phone].some(v => String(v || '').includes(q))));
+    && (!q || [s.name, s.parent_name, s.parent_phone].some(v => String(v || '').includes(q))))
+    .sort((a, b) => String(a.join_date || '9999').localeCompare(String(b.join_date || '9999')) || String(a.name).localeCompare(String(b.name), 'ar'));
   return `
   <div class="head"><div><h1>الطلاب</h1><p>${active().length} مستمر · ${D.students.length - active().length} منقطع</p></div>
     <div class="actions"><button class="btn" onclick="exportStudents()">تصدير Excel</button><button class="btn primary" onclick="studentForm()">+ طالب جديد</button></div></div>
@@ -239,16 +241,16 @@ VIEWS.students = () => {
     <select onchange="UI.stClass=this.value;render()" aria-label="الصف"><option value="">كل الصفوف</option>${classes().map(c => `<option ${c === UI.stClass ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
     <select onchange="UI.stStatus=this.value;render()" aria-label="الحالة">${[['active', 'المستمرون'], ['inactive', 'المنقطعون'], ['all', 'الكل']].map(([v, l]) => `<option value="${v}" ${v === UI.stStatus ? 'selected' : ''}>${l}</option>`).join('')}</select>
   </div>
-  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>الصف</th><th>ولي الأمر</th><th>الرسم الشهري</th><th>المستحق</th><th>المدفوع</th><th>المتبقي</th><th>اليوم</th></tr></thead><tbody>
+  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>الصف</th><th>تاريخ الالتحاق</th><th>ولي الأمر</th><th>الرسم الشهري</th><th>المستحق</th><th>المدفوع</th><th>المتبقي</th><th>اليوم</th></tr></thead><tbody>
   ${list.map(s => { const b = bal(s); const a = attOf(s.id, D.today);
     return `<tr class="click ${s.status === 'inactive' ? 'dim' : ''}" onclick="openStudent('${s.id}')" tabindex="0" onkeydown="if(event.key==='Enter')openStudent('${s.id}')">
       <td><b>${esc(s.name)}</b>${s.allergies ? ' <span title="حساسية">⚠️</span>' : ''}${s.status === 'inactive' ? ' <span class="tag warn">منقطع</span>' : ''}</td>
-      <td>${esc(s.grade || '—')}</td><td>${esc(s.parent_name || '')}<div class="muted num">${esc(s.parent_phone || '')}</div></td>
+      <td>${esc(s.grade || '—')}</td><td class="num" style="white-space:nowrap">${esc(fmtDate(s.join_date))}</td><td>${esc(s.parent_name || '')}<div class="muted num">${esc(s.parent_phone || '')}</div></td>
       <td>${money(N(s.monthlyFee) - N(s.discount))}${N(s.discount) ? `<div class="muted">خصم ${fmt(s.discount)}</div>` : ''}</td>
       <td>${money(b.totalDue)}</td><td class="money-ok">${money(b.paid)}</td>
       <td class="${b.remaining > 0 ? 'money-bad' : 'money-ok'}">${money(b.remaining)}</td>
       <td>${s.status === 'inactive' ? '—' : a ? `<span class="tag ${STATUS_TAG[a.status]}">${STATUS[a.status]}</span>` : '<span class="tag mute">—</span>'}</td></tr>`; }).join('')
-    || `<tr><td colspan="8" class="empty">${D.students.length ? 'لا يوجد طلاب بهذه المواصفات' : 'لم تسجّل أي طالب بعد<br><button class="btn primary" onclick="studentForm()">أضف أول طالب</button>'}</td></tr>`}
+    || `<tr><td colspan="9" class="empty">${D.students.length ? 'لا يوجد طلاب بهذه المواصفات' : 'لم تسجّل أي طالب بعد<br><button class="btn primary" onclick="studentForm()">أضف أول طالب</button>'}</td></tr>`}
   </tbody></table></div></section>`;
 };
 
