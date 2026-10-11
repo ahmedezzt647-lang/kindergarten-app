@@ -166,48 +166,52 @@
       try { await fetch(url, { method: 'DELETE' }); } catch(e) {}
     }
 
-    // معادلة ملف الإكسيل بحذافيرها:
-    // إذا كان يوم الالتحاق > 15 (منتصف الشهر) -> شهر الالتحاق = نصف الرسم (netMonthly / 2)
-    // إذا كان يوم الالتحاق <= 15 -> شهر الالتحاق = الرسم كاملاً (netMonthly)
-    // الشهور الكاملة بين شهر الالتحاق والشهر السابق للحالي = شهور كاملة
-    // الشهر الحالي (أكتوبر) = رسوم كاملة مقدماً
+    // قاعدة الحساب:
+    // إذا كان يوم الالتحاق <= 10  -> شهر الالتحاق = رسم كامل
+    // إذا كان يوم الالتحاق >= 11  -> شهر الالتحاق = نصف رسم
+    // كل شهر جديد يبدأ من أول الشهر التالي للالتحاق يُحسب رسماً كاملاً
     function calculateStudentFinancials(s, booksList) {
       const joinDate = new Date(s.join_date);
       const now = new Date();
-      
+
       const monthlyFee = parseFloat(s.monthlyFee) || 0;
       const discount = parseFloat(s.discount) || 0;
       const netMonthly = monthlyFee - discount;
-      
+
       const joinYear = joinDate.getFullYear();
       const joinMonth = joinDate.getMonth(); // 0-11
       const joinDay = joinDate.getDate();
-      
+
       const nowYear = now.getFullYear();
       const nowMonth = now.getMonth();
 
       let totalTuition = 0;
       let descText = '';
 
+      // معامل شهر الالتحاق: يوم 1-10 = كامل، يوم 11+ = نصف
+      const firstMonthFactor = joinDay <= 10 ? 1 : 0.5;
+      const firstMonthCost = netMonthly * firstMonthFactor;
+      const firstLabel = joinDay <= 10 ? `ش.${joinMonth+1} كامل` : `نصف ش.${joinMonth+1}`;
+
       if (joinYear === nowYear && joinMonth === nowMonth) {
-        const firstPart = joinDay > 15 ? (netMonthly / 2) : netMonthly;
-        totalTuition = Math.round(firstPart);
-        descText = joinDay > 15 ? 'نصف الشهر الحالي' : 'الشهر الحالي كامل';
+        // لسه في نفس شهر الالتحاق
+        totalTuition = Math.round(firstMonthCost);
+        descText = firstLabel;
       } else {
-        // 1. شهر الالتحاق (بعد 15 = نصف رسم، 15 أو قبله = رسم كامل)
-        const firstMonthCost = joinDay > 15 ? (netMonthly / 2) : netMonthly;
+        // الشهور الكاملة من أول الشهر التالي للالتحاق حتى اليوم
+        // أول الشهر التالي للالتحاق
+        const nextMonthAfterJoin = new Date(joinYear, joinMonth + 1, 1);
+        const currentMonthStart = new Date(nowYear, nowMonth, 1);
 
-        // 2. الشهور الكاملة اللاحقة حتى الشهر السابق للحالي
-        let fullMonths = (nowYear - joinYear) * 12 + (nowMonth - joinMonth) - 1;
+        // عدد الشهور الكاملة = من أول الشهر التالي للالتحاق حتى بداية الشهر الحالي
+        let fullMonths = (currentMonthStart.getFullYear() - nextMonthAfterJoin.getFullYear()) * 12
+                       + (currentMonthStart.getMonth() - nextMonthAfterJoin.getMonth());
         if (fullMonths < 0) fullMonths = 0;
-        const fullMonthsCost = fullMonths * netMonthly;
 
-        // 3. الشهر الحالي (أكتوبر) مقدمةً
+        // الشهر الحالي مقدماً
         const currentMonthCost = netMonthly;
 
-        totalTuition = Math.round(firstMonthCost + fullMonthsCost + currentMonthCost);
-        
-        const firstLabel = joinDay > 15 ? `نصف ش.${joinMonth+1}` : `ش.${joinMonth+1} كامل`;
+        totalTuition = Math.round(firstMonthCost + fullMonths * netMonthly + currentMonthCost);
         descText = `${firstLabel} + ${fullMonths} ش.كامل + ش.${nowMonth+1} مقدم`;
       }
 
