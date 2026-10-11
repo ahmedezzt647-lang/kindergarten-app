@@ -78,7 +78,7 @@ const typeIcon = { 'سلوك':'🌟', 'وجبات':'🍎', 'نوم':'😴', 'ت�
       ${d.payments.length ? d.payments.map(p => `<div class="row"><div>إيصال رقم ${esc(p.receiptNo)} <span class="muted">· ${esc(p.method)}</span></div><b class="num">${p.amount} ${c}</b><span class="muted">${esc(p.date)}</span></div>`).join('') : '<p class="empty">لا توجد دفعات مسجلة</p>'}
     </section>
 
-    ${d.books.length ? `<section class="panel"><h2>الكتب</h2>${d.books.map(b => `<div class="row"><div>${esc(b.title)}</div><b class="num">${esc(b.price)} ${c}</b><span class="muted">${esc(b.date)}</span></div>`).join('')}</section>` : ''}
+    ${d.books.length ? `<section class="panel"><h2>الكتب</h2>${d.books.map(b => `<div class="row"><div>${esc(b.title)} ${b.paid ? '<span class="tag ok">مسدّد</span>' : b.paidAmount ? `<span class="tag warn">باقي ${(b.price - b.paidAmount).toLocaleString('en-US')}</span>` : '<span class="tag bad">غير مسدّد</span>'}</div><b class="num">${esc(b.price)} ${c}</b><span class="muted">${esc(b.date)}</span></div>`).join('')}</section>` : ''}
 
     ${d.school.phone ? `<p style="text-align:center"><a class="btn wa" href="https://wa.me/${esc(d.school.phone.replace(/\D/g,'').replace(/^0/,'966'))}">تواصل مع الروضة عبر واتساب</a></p>` : ''}
   </main>`;

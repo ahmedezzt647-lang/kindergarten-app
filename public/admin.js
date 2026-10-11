@@ -96,13 +96,27 @@ function lastMonths(n) {
   return out;
 }
 const partners = () => (D.settings.partners && D.settings.partners.length ? D.settings.partners : [{ name: 'احمد', share: 50 }, { name: 'عبدالله', share: 50 }]);
+const BOOK_BUY = 'شراء كتب';
+const isBookBuy = e => e.category === BOOK_BUY;
+// ما دُفع من ثمن الكتب خلال شهر (كل دفعة بتاريخها)
+const bookPaysIn = m => D.books.flatMap(b => (b.pays || []).filter(p => !m || monthOf(p.date) === m));
+function booksSummary(m) {
+  const sold = sumBy(D.books.filter(b => !m || monthOf(b.date) === m), b => b.price);
+  const collected = sumBy(bookPaysIn(m), p => p.amount);
+  const bought = sumBy(D.expenses.filter(e => isBookBuy(e) && (!m || monthOf(e.date) === m)), e => e.amount);
+  const unpaid = sumBy(D.books, b => N(b.price) - N(b.paidAmount));
+  return { sold, collected, bought, unpaid };
+}
 function monthFin(m) {
-  const inc = sumBy(D.payments.filter(p => monthOf(p.date) === m), p => p.amount);
+  const fees = sumBy(D.payments.filter(p => monthOf(p.date) === m), p => p.amount);
+  const books = sumBy(bookPaysIn(m), p => p.amount);
   const out = sumBy(D.expenses.filter(e => monthOf(e.date) === m), e => e.amount);
-  return { m, inc, out, net: inc - out };
+  const booksOut = sumBy(D.expenses.filter(e => isBookBuy(e) && monthOf(e.date) === m), e => e.amount);
+  const inc = fees + books;
+  return { m, fees, books, inc, out, booksOut, net: inc - out };
 }
 function activeMonths() {
-  const ms = new Set([...D.payments.map(p => monthOf(p.date)), ...D.expenses.map(e => monthOf(e.date)), monthOf(D.today)].filter(Boolean));
+  const ms = new Set([...D.payments.map(p => monthOf(p.date)), ...D.expenses.map(e => monthOf(e.date)), ...bookPaysIn().map(p => monthOf(p.date)), monthOf(D.today)].filter(Boolean));
   return [...ms].sort();
 }
 const sumBy = (arr, f) => arr.reduce((a, x) => a + N(f(x)), 0);
@@ -135,8 +149,7 @@ VIEWS.home = () => {
   const today = D.today, m = monthOf(today);
   const present = act_.filter(s => ['present', 'late'].includes(attOf(s.id, today)?.status)).length;
   const marked = act_.filter(s => attOf(s.id, today)).length;
-  const income = sumBy(D.payments.filter(p => monthOf(p.date) === m), p => p.amount);
-  const spent = sumBy(D.expenses.filter(e => monthOf(e.date) === m), e => e.amount);
+  const mf = monthFin(m), income = mf.inc, spent = mf.out;
   const debtors = D.students.map(s => ({ s, b: bal(s) })).filter(x => x.b.remaining > 0).sort((a, b) => b.b.remaining - a.b.remaining);
   const owed = sumBy(debtors, x => x.b.remaining);
   const upcoming = D.announcements.filter(a => a.eventDate && a.eventDate >= today).sort((a, b) => a.eventDate.localeCompare(b.eventDate)).slice(0, 4);
@@ -148,7 +161,7 @@ VIEWS.home = () => {
 
   <div class="figures">
     <button class="fig" onclick="go('attendance')"><span>حضور اليوم</span><b class="num">${present} / ${act_.length}</b><small>${marked < act_.length ? `بقي ${act_.length - marked} بدون تسجيل` : 'اكتمل التسجيل'}</small></button>
-    <button class="fig" onclick="UI.finTab='payments';go('finance')"><span>المقبوض هذا الشهر</span><b class="num money-ok">${fmt(income)}</b><small>${cur()}</small></button>
+    <button class="fig" onclick="UI.finTab='payments';go('finance')"><span>المقبوض هذا الشهر</span><b class="num money-ok">${fmt(income)}</b><small>${mf.books ? `رسوم ${fmt(mf.fees)} · كتب ${fmt(mf.books)}` : cur()}</small></button>
     <button class="fig" onclick="UI.finTab='debts';go('finance')"><span>مبالغ متأخرة</span><b class="num money-bad">${fmt(owed)}</b><small>${debtors.length} طالب</small></button>
     <button class="fig" onclick="go('reports')"><span>صافي الشهر</span><b class="num">${fmt(income - spent)}</b><small>${partners().map(p => `${esc(p.name)}: ${fmt((income - spent) * N(p.share) / 100)}`).join(' · ')}</small></button>
   </div>
@@ -311,7 +324,7 @@ function openStudent(id) {
 
     <div class="actions" style="margin-bottom:16px">
       <button type="button" class="btn primary" onclick="paymentForm('${id}')">+ دفعة</button>
-      <button type="button" class="btn" onclick="bookForm('${id}')">+ كتاب</button>
+      <button type="button" class="btn" onclick="bookForm('${id}')">+ بيع كتاب</button>
       <button type="button" class="btn" onclick="noteForm('${id}')">+ ملاحظة يومية</button>
       <button type="button" class="btn" onclick="studentForm('${id}')">تعديل البيانات</button>
       <button type="button" class="btn" onclick="statement('${id}')">كشف حساب</button>
@@ -333,7 +346,8 @@ function openStudent(id) {
 
     <fieldset><legend>الدفعات</legend>
       ${pays.length ? pays.map(p => `<div class="list-row"><div>إيصال <b class="num">${p.receiptNo}</b> <span class="muted">· ${esc(p.date)} · ${esc(p.method)}</span></div><div class="actions"><b>${money(p.amount)}</b><button type="button" class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button></div></div>`).join('') : '<p class="muted">لا توجد دفعات</p>'}</fieldset>
-    ${books.length ? `<fieldset><legend>الكتب</legend>${books.map(x => `<div class="list-row"><span>${esc(x.title)} <span class="muted">${esc(x.date)}</span></span><b>${money(x.price)}</b></div>`).join('')}</fieldset>` : ''}
+    ${books.length ? `<fieldset><legend>الكتب (منفصلة عن الرسوم)</legend>${books.map(x => `<div class="list-row"><span>${esc(x.title)} <span class="muted">${esc(fmtDate(x.date))}</span> ${x.paid ? '<span class="tag ok">سدّد</span>' : N(x.paidAmount) ? `<span class="tag warn">باقي ${fmt(N(x.price) - N(x.paidAmount))}</span>` : '<span class="tag bad">لم يسدّد</span>'}</span>
+      <span class="actions"><b>${money(x.price)}</b>${x.paid ? '' : `<button type="button" class="btn sm primary" onclick="bookPay('${x.id}')">سداد</button>`}</span></div>`).join('')}</fieldset>` : ''}
     ${notes.length ? `<fieldset><legend>آخر الملاحظات</legend>${notes.map(n => `<div class="list-row"><span><span class="tag mute">${esc(n.type)}</span> ${esc(n.text)}</span><span class="muted">${esc(n.date)}</span></div>`).join('')}</fieldset>` : ''}
 
     <div class="modal-actions">
@@ -425,9 +439,28 @@ const FIN = {
     </tbody></table></div></section>`;
   },
   books() {
-    return `<section class="panel"><h2>مبيعات الكتب <button class="btn sm" onclick="bookForm()">+ كتاب لطالب</button></h2><div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الكتاب</th><th>السعر</th><th>التاريخ</th><th></th></tr></thead><tbody>
-    ${D.books.map(b => `<tr><td>${esc(b.studentName)}</td><td>${esc(b.title)}</td><td>${money(b.price)}</td><td class="num">${esc(b.date)}</td><td><button class="btn sm danger" onclick="del('books','${b.id}','هذا الكتاب')">حذف</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">لا توجد كتب مسجلة</td></tr>'}
-    </tbody></table></div><p class="muted">سعر الكتاب يُضاف تلقائياً إلى مستحقات الطالب.</p></section>`;
+    const bk = booksSummary();
+    const list = D.books.slice().sort((a, b) => (a.paid - b.paid) || String(b.date).localeCompare(String(a.date)));
+    const buys = D.expenses.filter(isBookBuy);
+    return `<div class="figures">
+      <div class="fig"><span>اشترينا كتباً بـ</span><b class="money-bad">${fmt(bk.bought)}</b><small>${buys.length} فاتورة شراء</small></div>
+      <div class="fig"><span>بعنا كتباً بـ</span><b>${fmt(bk.sold)}</b><small>${D.books.length} كتاب</small></div>
+      <div class="fig"><span>تم تحصيل</span><b class="money-ok">${fmt(bk.collected)}</b><small>غير مسدّد: ${fmt(bk.unpaid)}</small></div>
+      <div class="fig"><span>ربح الكتب</span><b class="${bk.sold - bk.bought < 0 ? 'money-bad' : ''}">${fmt(bk.sold - bk.bought)}</b><small>المبيع − الشراء</small></div>
+    </div>
+    <section class="panel"><h2>الكتب المباعة للطلاب <span class="actions"><button class="btn sm primary" onclick="bookForm()">+ كتاب لطالب</button><button class="btn sm" onclick="csv('books')">تصدير Excel</button></span></h2>
+    <div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الكتاب</th><th>السعر</th><th>المدفوع</th><th>السداد</th><th>التاريخ</th><th></th></tr></thead><tbody>
+    ${list.map(b => { const paid = N(b.paidAmount), left = N(b.price) - paid;
+      return `<tr><td><b>${esc(b.studentName)}</b></td><td>${esc(b.title)}</td><td>${money(b.price)}</td><td class="${paid ? 'money-ok' : ''}">${money(paid)}</td>
+      <td>${b.paid ? `<span class="tag ok">سدّد${b.paidDate ? ' ' + esc(fmtDate(b.paidDate)) : ''}</span>` : paid > 0 ? `<span class="tag warn">باقي ${fmt(left)}</span>` : '<span class="tag bad">لم يسدّد</span>'}</td>
+      <td class="num">${esc(fmtDate(b.date))}</td>
+      <td class="actions">${b.paid ? `<button class="btn sm ghost" onclick="bookUnpay('${b.id}')">إلغاء السداد</button>` : `<button class="btn sm primary" onclick="bookPay('${b.id}')">تسجيل السداد</button>`}<button class="btn sm danger" onclick="del('books','${b.id}','هذا الكتاب')">حذف</button></td></tr>`; }).join('')
+      || '<tr><td colspan="7" class="empty">لم تبِع أي كتاب بعد</td></tr>'}
+    </tbody></table></div><p class="muted">الكتب منفصلة عن الرسوم الشهرية: لا تُضاف لمستحقات الطالب، ولها سدادها الخاص. ما يُحصَّل منها يدخل في إيراد الشهر.</p></section>
+
+    <section class="panel"><h2>شراء الكتب <button class="btn sm" onclick="bookBuyForm()">+ شراء كتب</button></h2>
+      ${buys.map(e => `<div class="list-row"><span>${esc(e.title)} <span class="muted">${esc(fmtDate(e.date))}</span></span><span class="actions"><b class="money-bad">${money(e.amount)}</b><button class="btn sm danger" onclick="del('expenses','${e.id}','فاتورة الشراء هذه')">حذف</button></span></div>`).join('') || '<p class="empty">لم تسجّل شراء كتب بعد</p>'}
+      <p class="muted">شراء الكتب يُسجَّل كمصروف في بند "شراء كتب" ويدخل في إجمالي المصروفات.</p></section>`;
   },
 };
 function reminderLink(s, b) {
@@ -458,12 +491,41 @@ function expenseForm() {
     async data => !!(await act('POST', '/api/expenses', data, 'تم تسجيل المصروف')));
 }
 function bookForm(sid) {
-  modal(`<h2>إضافة كتاب لطالب</h2><div class="grid g2">
+  modal(`<h2>بيع كتاب لطالب</h2><div class="grid g2">
     <label class="f" style="grid-column:1/-1">الطالب *<select name="studentId" required><option value="">اختر الطالب…</option>${studentOptions(sid)}</select></label>
-    <label class="f">اسم الكتاب *<input name="title" required></label>
-    <label class="f">السعر *<input type="number" min="0" step="any" name="price" required></label></div>
-    <div class="modal-actions"><button class="btn primary" value="ok">إضافة الكتاب</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
-    async data => !!(await act('POST', '/api/books', data, 'تمت إضافة الكتاب')));
+    <label class="f">اسم الكتاب *<input name="title" required placeholder="مثال: كتاب الحروف"></label>
+    <label class="f">سعر البيع *<input type="number" min="0" step="any" name="price" required></label>
+    <label class="f" style="grid-column:1/-1">هل سدّد ثمن الكتاب؟ *<select name="paid" required onchange="document.getElementById('bk-part').hidden=this.value!=='part'">
+      <option value="">اختر…</option><option value="yes">نعم، سدّد كاملاً</option><option value="no">لم يسدّد بعد</option><option value="part">سدّد جزءاً</option></select></label>
+    <label class="f" id="bk-part" hidden>المبلغ المدفوع<input type="number" min="0" step="any" name="paidAmount"></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label>
+    <label class="f">طريقة الدفع<select name="method">${['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'].map(m => `<option>${m}</option>`).join('')}</select></label></div>
+    <div class="modal-actions"><button class="btn primary" value="ok">حفظ الكتاب</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => {
+      if (data.paid === 'part' && !(N(data.paidAmount) > 0)) { toast('اكتب المبلغ المدفوع', true); return false; }
+      return !!(await act('POST', '/api/books', data, data.paid === 'no' ? 'تم حفظ الكتاب — غير مسدّد' : 'تم حفظ الكتاب'));
+    });
+}
+function bookPay(id) {
+  const b = D.books.find(x => x.id === id); const left = N(b.price) - N(b.paidAmount);
+  modal(`<h2>سداد ثمن كتاب</h2><p class="muted" style="margin-top:0">${esc(b.studentName)} — ${esc(b.title)} · السعر ${money(b.price)}${N(b.paidAmount) ? ` · دفع سابقاً ${money(b.paidAmount)}` : ''}</p><div class="grid g3">
+    <label class="f">المبلغ<input type="number" min="0" step="any" name="amount" value="${left}" required></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label>
+    <label class="f">طريقة الدفع<select name="method">${['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'].map(m => `<option>${m}</option>`).join('')}</select></label></div>
+    <div class="modal-actions"><button class="btn primary" value="ok">تسجيل السداد</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => !!(await act('PUT', `/api/books/${id}/pay`, { amount: N(data.amount), date: data.date, method: data.method }, 'تم تسجيل سداد الكتاب')));
+}
+async function bookUnpay(id) {
+  if (!confirm('إلغاء سداد هذا الكتاب وإرجاعه غير مسدّد؟')) return;
+  await act('PUT', `/api/books/${id}/pay`, { unpay: true }, 'أصبح الكتاب غير مسدّد');
+}
+function bookBuyForm() {
+  modal(`<h2>شراء كتب</h2><div class="grid g2">
+    <label class="f" style="grid-column:1/-1">البيان *<input name="title" required placeholder="مثال: 20 كتاب حروف من المكتبة"></label>
+    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label></div>
+    <div class="modal-actions"><button class="btn primary" value="ok">حفظ الشراء</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => !!(await act('POST', '/api/expenses', { ...data, category: BOOK_BUY }, 'تم تسجيل شراء الكتب')));
 }
 async function del(kind, id, what) {
   if (!confirm(`حذف ${what}؟ لا يمكن التراجع.`)) return;
@@ -509,10 +571,11 @@ function statement(id) {
   printDoc('كشف حساب طالب', `<h2>${esc(s.name)} <span class="muted">${esc(s.grade || '')}</span></h2>
     <table><tr><th>البيان</th><th>مدين</th><th>دائن</th><th>التاريخ</th></tr>
     <tr><td>رسوم دراسية (${esc(b.desc)})</td><td>${fmt(b.tuition)}</td><td></td><td>منذ ${esc(s.join_date)}</td></tr>
-    ${books.map(x => `<tr><td>كتاب: ${esc(x.title)}</td><td>${fmt(x.price)}</td><td></td><td>${esc(x.date)}</td></tr>`).join('')}
     ${b.oneTime ? `<tr><td>خصم${s.oneTimeDiscountNote ? ': ' + esc(s.oneTimeDiscountNote) : ''}</td><td></td><td>${fmt(b.oneTime)}</td><td></td></tr>` : ''}
     ${pays.map(p => `<tr><td>دفعة — إيصال ${p.receiptNo}</td><td></td><td>${fmt(p.amount)}</td><td>${esc(p.date)}</td></tr>`).join('')}
-    <tr><th>الإجمالي</th><th>${fmt(b.tuition + b.booksTotal)}</th><th>${fmt(b.paid + b.oneTime)}</th><th></th></tr></table>
+    <tr><th>الإجمالي</th><th>${fmt(b.tuition)}</th><th>${fmt(b.paid + b.oneTime)}</th><th></th></tr></table>
+    ${books.length ? `<h2 style="margin-top:22px">الكتب</h2><table><tr><th>الكتاب</th><th>السعر</th><th>المدفوع</th><th>الباقي</th><th>التاريخ</th></tr>
+    ${books.map(x => `<tr><td>${esc(x.title)}</td><td>${fmt(x.price)}</td><td>${fmt(x.paidAmount)}</td><td>${fmt(N(x.price) - N(x.paidAmount))}</td><td>${esc(x.date)}</td></tr>`).join('')}</table>` : ''}
     <p class="big">الرصيد المتبقي: ${fmt(b.remaining)} ${cur()}</p>`);
 }
 
@@ -624,8 +687,7 @@ const monthEnd = m => { const [y, mo] = m.split('-').map(Number); return new Dat
 const prevMonth = m => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 function monthDue(s, m) {
   const upto = x => Finance.calcTuition(s, { ...opts(), now: monthEnd(x) }).tuition;
-  const books = sumBy(D.books.filter(b => b.studentId === s.id && monthOf(b.date) === m), b => b.price);
-  return Math.round((upto(m) - upto(prevMonth(m)) + books) * 100) / 100;
+  return Math.round((upto(m) - upto(prevMonth(m))) * 100) / 100;
 }
 function allocation(s) {
   const ms = activeMonths().filter(m => s.join_date && m >= monthOf(s.join_date));
@@ -640,8 +702,8 @@ VIEWS.reports = () => {
   const m = UI.repMonth;
   const P = partners();
   const pays = D.payments.filter(p => monthOf(p.date) === m), exps = D.expenses.filter(e => monthOf(e.date) === m);
-  const inc = sumBy(pays, p => p.amount), out = sumBy(exps, e => e.amount), net = inc - out;
-  const byMethod = {}; pays.forEach(p => byMethod[p.method || 'نقدي'] = (byMethod[p.method || 'نقدي'] || 0) + N(p.amount));
+  const mf = monthFin(m), inc = mf.inc, out = mf.out, net = mf.net, bk = booksSummary(m);
+  const byMethod = {}; [...pays, ...bookPaysIn(m)].forEach(p => byMethod[p.method || 'نقدي'] = (byMethod[p.method || 'نقدي'] || 0) + N(p.amount));
   const byCat = {}; exps.forEach(e => byCat[e.category || 'أخرى'] = (byCat[e.category || 'أخرى'] || 0) + N(e.amount));
   // رسوم هذا الشهر لكل طالب
   const rows = D.students.map(s => { const a = allocation(s)[m]; return a && a.due > 0 ? { s, ...a, paidIn: sumBy(pays.filter(p => p.studentId === s.id), p => p.amount) } : null; }).filter(Boolean)
@@ -656,8 +718,8 @@ VIEWS.reports = () => {
 
   <h2 style="font-size:22px;margin:4px 0 14px">${monthName(m)}</h2>
   <div class="figures">
-    <div class="fig"><span>المقبوض في ${monthName(m)}</span><b class="money-ok">${fmt(inc)}</b><small>${pays.length} إيصال</small></div>
-    <div class="fig"><span>مصروفات ${monthName(m)}</span><b class="money-bad">${fmt(out)}</b><small>${exps.length} بند</small></div>
+    <div class="fig"><span>المقبوض في ${monthName(m)}</span><b class="money-ok">${fmt(inc)}</b><small>رسوم ${fmt(mf.fees)} · كتب ${fmt(mf.books)}</small></div>
+    <div class="fig"><span>مصروفات ${monthName(m)}</span><b class="money-bad">${fmt(out)}</b><small>${mf.booksOut ? `منها شراء كتب ${fmt(mf.booksOut)}` : exps.length + ' بند'}</small></div>
     <div class="fig"><span>صافي ${monthName(m)}</span><b>${fmt(net)}</b><small>${cur()}</small></div>
     <div class="fig"><span>نصيب الشركاء</span><b style="font-size:19px">${P.map(p => `${esc(p.name)}: ${fmt(net * N(p.share) / 100)}`).join('<br>')}</b><small>${P.map(p => fmt(p.share) + '٪').join(' / ')}</small></div>
   </div>
@@ -673,6 +735,13 @@ VIEWS.reports = () => {
     <p class="muted">المدفوع يُوزَّع على الأشهر من الأقدم للأحدث: أي دفعة تسدّد الشهر الأقدم أولاً. "المقبوض في الشهر" أعلاه هو ما دخل الصندوق فعلاً خلاله.</p>
   </section>
 
+  <section class="panel"><h2>كتب ${monthName(m)} <button class="btn sm ghost" onclick="UI.finTab='books';go('finance')">إدارة الكتب</button></h2>
+    <div class="list-row"><span>اشترينا كتباً بـ</span><b class="money-bad">${money(bk.bought)}</b></div>
+    <div class="list-row"><span>بعنا كتباً بـ</span><b>${money(bk.sold)}</b></div>
+    <div class="list-row"><span>حصّلنا من ثمن الكتب</span><b class="money-ok">${money(bk.collected)}</b></div>
+    <div class="list-row"><span>ربح الكتب (المبيع − الشراء)</span><b class="${bk.sold - bk.bought < 0 ? 'money-bad' : ''}">${money(bk.sold - bk.bought)}</b></div>
+    <p class="muted">المحصّل من الكتب داخل في "المقبوض" أعلاه، وشراء الكتب داخل في "المصروفات".</p></section>
+
   <div class="cols">
     <section class="panel"><h2>مصروفات ${monthName(m)}</h2>${exps.map(e => `<div class="list-row"><span>${esc(e.title)} <span class="muted">${esc(fmtDate(e.date))}</span></span><b class="money-bad">${money(e.amount)}</b></div>`).join('') || '<p class="empty">لا توجد مصروفات في هذا الشهر</p>'}</section>
     <div><section class="panel"><h2>المقبوض حسب طريقة الدفع</h2>${kv(byMethod)}</section><section class="panel"><h2>المصروفات حسب البند</h2>${kv(byCat)}</section>
@@ -681,20 +750,20 @@ VIEWS.reports = () => {
 
   ${partnersPanel()}
   <section class="panel"><h2>تصدير ونسخ احتياطي</h2><div class="actions">
-    <button class="btn" onclick="exportStudents()">الطلاب (Excel)</button><button class="btn" onclick="csv('payments')">الدفعات (Excel)</button><button class="btn" onclick="csv('expenses')">المصروفات (Excel)</button>
+    <button class="btn" onclick="exportStudents()">الطلاب (Excel)</button><button class="btn" onclick="csv('payments')">الدفعات (Excel)</button><button class="btn" onclick="csv('expenses')">المصروفات (Excel)</button><button class="btn" onclick="csv('books')">الكتب (Excel)</button>
     <a class="btn primary" href="/api/backup" download>تنزيل نسخة احتياطية كاملة</a></div>
     <p class="muted">ننصح بتنزيل نسخة احتياطية مرة كل شهر وحفظها في مكان آمن.</p></section>`;
 };
 function partnersPanel() {
   const P = partners(), ms = activeMonths();
   const rows = ms.map(monthFin);
-  const tot = { inc: sumBy(rows, r => r.inc), out: sumBy(rows, r => r.out) }; tot.net = tot.inc - tot.out;
+  const tot = { fees: sumBy(rows, r => r.fees), books: sumBy(rows, r => r.books), inc: sumBy(rows, r => r.inc), out: sumBy(rows, r => r.out) }; tot.net = tot.inc - tot.out;
   const share = (net, p) => net * (N(p.share) / 100);
   return `<section class="panel"><h2>ملخص كل الأشهر ونصيب الشركاء <span class="muted">${P.map(p => `${esc(p.name)} ${fmt(p.share)}٪`).join(' · ')}</span></h2>
-  <div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>المقبوض</th><th>المصروفات</th><th>الصافي</th>${P.map(p => `<th>نصيب ${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
-  ${rows.map(r => `<tr${r.m === UI.repMonth ? ' style="background:var(--palm-2)"' : ''}><td><b>${monthName(r.m)}</b></td><td class="money-ok">${money(r.inc)}</td><td class="money-bad">${money(r.out)}</td><td><b>${money(r.net)}</b></td>${P.map(p => `<td><b class="${r.net < 0 ? 'money-bad' : ''}">${money(share(r.net, p))}</b></td>`).join('')}</tr>`).join('')}
-  <tr style="border-top:2px solid var(--line)"><td><b>الإجمالي</b></td><td class="money-ok"><b>${money(tot.inc)}</b></td><td class="money-bad"><b>${money(tot.out)}</b></td><td><b>${money(tot.net)}</b></td>${P.map(p => `<td><b>${money(share(tot.net, p))}</b></td>`).join('')}</tr>
-  </tbody></table></div><p class="muted">المقبوض يُحسب حسب تاريخ الدفع، والصافي = المقبوض − كل المصروفات. تعديل الأسماء والنسب من الإعدادات.</p></section>`;
+  <div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>رسوم</th><th>كتب</th><th>إجمالي المقبوض</th><th>المصروفات</th><th>الصافي</th>${P.map(p => `<th>نصيب ${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
+  ${rows.map(r => `<tr${r.m === UI.repMonth ? ' style="background:var(--palm-2)"' : ''}><td><b>${monthName(r.m)}</b></td><td>${money(r.fees)}</td><td>${money(r.books)}</td><td class="money-ok">${money(r.inc)}</td><td class="money-bad">${money(r.out)}</td><td><b>${money(r.net)}</b></td>${P.map(p => `<td><b class="${r.net < 0 ? 'money-bad' : ''}">${money(share(r.net, p))}</b></td>`).join('')}</tr>`).join('')}
+  <tr style="border-top:2px solid var(--line)"><td><b>الإجمالي</b></td><td><b>${money(tot.fees)}</b></td><td><b>${money(tot.books)}</b></td><td class="money-ok"><b>${money(tot.inc)}</b></td><td class="money-bad"><b>${money(tot.out)}</b></td><td><b>${money(tot.net)}</b></td>${P.map(p => `<td><b>${money(share(tot.net, p))}</b></td>`).join('')}</tr>
+  </tbody></table></div><p class="muted">المقبوض (رسوم + ما حُصّل من الكتب) يُحسب حسب تاريخ الدفع، والصافي = المقبوض − كل المصروفات (ومنها شراء الكتب). تعديل الأسماء والنسب من الإعدادات.</p></section>`;
 }
 function downloadCsv(name, rows) {
   const body = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
@@ -708,6 +777,7 @@ function exportStudents() {
 }
 function csv(kind) {
   if (kind === 'payments') downloadCsv('الدفعات', [['رقم الإيصال', 'الطالب', 'المبلغ', 'الطريقة', 'التاريخ', 'ملاحظة'], ...D.payments.map(p => [p.receiptNo, p.studentName, p.amount, p.method, p.date, p.note])]);
+  else if (kind === 'books') downloadCsv('الكتب', [['الطالب', 'الكتاب', 'السعر', 'المدفوع', 'الباقي', 'الحالة', 'تاريخ البيع', 'تاريخ السداد'], ...D.books.map(b => [b.studentName, b.title, b.price, N(b.paidAmount), N(b.price) - N(b.paidAmount), b.paid ? 'سدّد' : N(b.paidAmount) ? 'سدّد جزءاً' : 'لم يسدّد', b.date, b.paidDate || ''])]);
   else downloadCsv('المصروفات', [['البند', 'التصنيف', 'المبلغ', 'التاريخ', 'ملاحظة'], ...D.expenses.map(e => [e.title, e.category, e.amount, e.date, e.note])]);
 }
 

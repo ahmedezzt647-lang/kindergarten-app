@@ -32,7 +32,7 @@ const Settings = mongoose.model('Settings', new S({
   halfMonthAfterDay: { type: Number, default: 10 },
   classes: [{ name: String, teacher: String, capacity: Number }],
   partners: { type: [{ name: String, share: Number }], default: [{ name: 'احمد', share: 50 }, { name: 'عبدالله', share: 50 }] },
-  expenseCategories: { type: [String], default: ['رواتب', 'إيجار', 'كهرباء وماء', 'أدوات تعليمية', 'صيانة', 'مواصلات', 'أخرى'] },
+  expenseCategories: { type: [String], default: ['رواتب', 'إيجار', 'شراء كتب', 'كهرباء وماء', 'أدوات تعليمية', 'صيانة', 'مواصلات', 'أخرى'] },
   passwordHash: String,
   receiptCounter: { type: Number, default: 1000 },
   migrations: [String],
@@ -67,6 +67,9 @@ const Attendance = mongoose.model('Attendance', new S({
 
 const Book = mongoose.model('Book', new S({
   id: String, studentId: String, studentName: String, title: String, price: String, date: String,
+  // سداد ثمن الكتاب منفصل عن الرسوم: كل دفعة بتاريخها حتى تُحسب في شهرها
+  pays: [{ amount: Number, date: String, method: String }],
+  paidAmount: { type: Number, default: 0 }, paid: { type: Boolean, default: false }, paidDate: String,
 }, opt));
 
 const Staff = mongoose.model('Staff', new S({
@@ -152,6 +155,7 @@ function tooMany(ip) {
 
 // ====== ترحيل البيانات القديمة ======
 async function migrate() {
+  await Settings.updateOne({ key: 'main', expenseCategories: { $ne: 'شراء كتب' } }, { $push: { expenseCategories: { $each: ['شراء كتب'], $position: 2 } } });
   const s = await getSettings();
   if (!s.migrations.includes('v2-payments')) {
     const students = await Student.find();
@@ -225,7 +229,7 @@ app.get('/api/portal/:token', wrap(async (req, res) => {
     student: { name: st.name, grade: st.grade, join_date: st.join_date, status: st.status },
     balance: bal,
     payments: payments.map(p => ({ receiptNo: p.receiptNo, amount: p.amount, date: p.date, method: p.method })),
-    books: books.map(b => ({ title: b.title, price: b.price, date: b.date })),
+    books: books.map(b => ({ title: b.title, price: b.price, date: b.date, paid: !!b.paid, paidAmount: b.paidAmount || 0 })),
     attendance: attendance.map(a => ({ date: a.date, status: a.status, checkIn: a.checkIn, checkOut: a.checkOut })),
     notes: notes.map(n => ({ date: n.date, type: n.type, text: n.text, mood: n.mood })),
     announcements: ann.map(a => ({ title: a.title, body: a.body, date: a.date, eventDate: a.eventDate })),
@@ -332,7 +336,31 @@ app.delete('/api/expenses/:id', wrap(async (req, res) => { await Expense.deleteO
 app.post('/api/books', wrap(async (req, res) => {
   const st = await Student.findOne({ id: req.body.studentId });
   if (!st || !req.body.title) return res.status(400).json({ error: 'اختر الطالب واكتب اسم الكتاب' });
-  const b = await Book.create({ id: newId(), studentId: st.id, studentName: st.name, title: req.body.title, price: String(parseFloat(req.body.price) || 0), date: req.body.date || today() });
+  const price = parseFloat(req.body.price) || 0;
+  // paid: 'yes' سدّد كاملاً | 'no' لم يسدّد | 'part' سدّد جزءاً (paidAmount)
+  const paidAmount = req.body.paid === 'yes' ? price : req.body.paid === 'part' ? Math.min(price, Math.max(0, parseFloat(req.body.paidAmount) || 0)) : 0;
+  const date = req.body.date || today();
+  const b = await Book.create({ id: newId(), studentId: st.id, studentName: st.name, title: String(req.body.title).trim(), price: String(price), date,
+    pays: paidAmount > 0 ? [{ amount: paidAmount, date, method: req.body.method || 'نقدي' }] : [],
+    paidAmount, paid: paidAmount >= price && price > 0, paidDate: paidAmount > 0 ? date : null });
+  res.json(b);
+}));
+// سداد ثمن كتاب: amount = مبلغ مدفوع الآن (بدونه = سداد الباقي كاملاً)، unpay = إلغاء السداد
+app.put('/api/books/:id/pay', wrap(async (req, res) => {
+  const b = await Book.findOne({ id: req.params.id });
+  if (!b) return res.status(404).json({ error: 'الكتاب غير موجود' });
+  const price = parseFloat(b.price) || 0;
+  if (req.body.unpay) b.pays = [];
+  else {
+    const left = price - (b.paidAmount || 0);
+    const add = Math.min(left, req.body.amount !== undefined ? parseFloat(req.body.amount) : left);
+    if (!(add > 0)) return res.status(400).json({ error: left > 0 ? 'اكتب مبلغاً صحيحاً' : 'هذا الكتاب مسدّد بالكامل' });
+    b.pays.push({ amount: add, date: req.body.date || today(), method: req.body.method || 'نقدي' });
+  }
+  b.paidAmount = b.pays.reduce((a, p) => a + (p.amount || 0), 0);
+  b.paid = b.paidAmount >= price && price > 0;
+  b.paidDate = b.pays.length ? b.pays[b.pays.length - 1].date : null;
+  await b.save();
   res.json(b);
 }));
 app.delete('/api/books/:id', wrap(async (req, res) => { await Book.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
