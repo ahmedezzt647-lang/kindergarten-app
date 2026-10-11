@@ -11,21 +11,23 @@ app.use((req, res, next) => {
   next();
 });
 
+// قاعدة بيانات داخل ذاكرة السيرفر النشطة والمضمونة
 let db = {
   students: [
-    { id: '1', name: 'أحمد محمد', grade: 'تمهيدي', parent_phone: '0501234567', join_date: '2026-01-01', monthlyFee: '500', discount: '0', paid: '500' }
+    { id: '1', name: 'ابراهيم محمد', grade: '2', parent_phone: '05681033655', join_date: '2026-09-15', monthlyFee: '200', discount: '0', paid: '0', status: 'active' }
   ],
-  payments: [{ id: '1001', studentName: 'أحمد محمد', amount: '500', date: '2026-01-01' }],
-  expenses: [{ id: '1', title: 'إيجار المقر', amount: '2000', date: '2026-01-01' }],
+  payments: [],
+  expenses: [],
   attendance: [],
   books: []
 };
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
+// الطلاب
 app.get('/api/students', (req, res) => res.json(db.students));
 app.post('/api/students', (req, res) => {
-  const student = { id: Date.now().toString(), ...req.body };
+  const student = { id: Date.now().toString(), status: 'active', ...req.body };
   db.students.push(student);
   if (parseFloat(req.body.paid) > 0) {
     db.payments.push({ id: Math.floor(1000 + Math.random() * 9000).toString(), studentName: req.body.name, amount: parseFloat(req.body.paid), date: new Date().toISOString().split('T')[0] });
@@ -36,7 +38,13 @@ app.delete('/api/students/:id', (req, res) => {
   db.students = db.students.filter(s => s.id !== req.params.id);
   res.json({ success: true });
 });
+app.put('/api/students/status/:id', (req, res) => {
+  const s = db.students.find(x => x.id === req.params.id);
+  if (s) { s.status = req.body.status; }
+  res.json({ success: true });
+});
 
+// المقبوضات والدفعات
 app.get('/api/payments', (req, res) => res.json(db.payments));
 app.post('/api/students/pay', (req, res) => {
   const { id, amount, studentName } = req.body;
@@ -48,6 +56,7 @@ app.post('/api/students/pay', (req, res) => {
   res.json({ success: true });
 });
 
+// المصروفات
 app.get('/api/expenses', (req, res) => res.json(db.expenses));
 app.post('/api/expenses', (req, res) => {
   const exp = { id: Date.now().toString(), ...req.body };
@@ -59,6 +68,7 @@ app.delete('/api/expenses/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// الحضور
 app.get('/api/attendance', (req, res) => res.json(db.attendance));
 app.post('/api/attendance', (req, res) => {
   const { studentId, status } = req.body;
@@ -68,6 +78,7 @@ app.post('/api/attendance', (req, res) => {
   res.json({ success: true });
 });
 
+// الكتب
 app.get('/api/books', (req, res) => res.json(db.books));
 app.post('/api/books', (req, res) => {
   const book = { id: Date.now().toString(), ...req.body };
