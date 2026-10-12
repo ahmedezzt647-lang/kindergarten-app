@@ -194,3 +194,29 @@ body.no-delete .btn.danger:not(.logout),body.no-delete [onclick^="del("],body.no
 .perm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
 .perm{display:flex;gap:8px;align-items:center;border:1px solid var(--line,#dfe5e3);border-radius:10px;padding:8px 10px;cursor:pointer}
 .perm input{width:auto;margin:0}
+
+/* الحسابات */
+.stmt{width:100%;border-collapse:collapse}
+.stmt td{padding:8px 10px;border-bottom:1px solid var(--line)}
+.stmt td.num{text-align:left;white-space:nowrap}
+.stmt .sec td{background:var(--mist);font-weight:700;color:var(--palm-ink)}
+.stmt .tot td{border-top:2px solid var(--palm);background:var(--paper)}
+.stmt .net td{font-weight:800;font-size:calc(19px * var(--fs,1));color:var(--palm);border-top:3px double var(--palm);border-bottom:none}
+.stmt .net.loss td{color:var(--rose)}
+tr.dim td{opacity:.55}
+/* التطوير */
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.kpi{border:1px solid var(--line);border-radius:14px;padding:12px 14px;border-inline-start:5px solid var(--palm)}
+.kpi.warn{border-inline-start-color:var(--sun)} .kpi.bad{border-inline-start-color:var(--rose)}
+.kpi span{display:block;color:var(--ink-2);font-size:calc(13px * var(--fs,1))} .kpi b{display:block;font-size:calc(24px * var(--fs,1));margin:2px 0}
+.kpi small{color:var(--ink-2)}
+.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:900px){.kanban{grid-template-columns:1fr}}
+.kcol{background:var(--mist);border-radius:14px;padding:10px;min-height:120px}
+.kcol h3{margin:2px 4px 10px;font-size:calc(15px * var(--fs,1))}
+.imp-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.imp-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.imp-note{margin:6px 0;font-size:calc(13px * var(--fs,1));color:var(--ink-2)}
+.imp-card .actions{margin-top:8px;flex-wrap:wrap}
+
+.chart.many{gap:4px} .chart.many .m{min-width:0} .chart.many label{font-size:calc(10px * var(--fs));writing-mode:vertical-rl;transform:rotate(180deg);height:46px;white-space:nowrap}

@@ -2,7 +2,7 @@
 // - ملفات التصميم والبرنامج: من الإنترنت دائماً، مع نسخة محفوظة احتياطاً.
 // - الصفحات وبيانات /api: من الإنترنت دائماً (البيانات لا تُخزَّن على الجهاز).
 // - بدون إنترنت: صفحة تخبر المستخدم بذلك.
-const VERSION = 'rawda-v5';
+const VERSION = 'rawda-v6';
 const SHELL = ['/assets/style.css', '/assets/admin.css', '/assets/admin.js', '/shared/finance.js', '/assets/theme.js', '/assets/icons/icon-192.png'];
 
 self.addEventListener('install', e => {

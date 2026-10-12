@@ -15,9 +15,14 @@
 - `shared/activities.js` فعاليات الخميس الترفيهية التعليمية: 34 فعالية لكل فئة (`kg` روضة، `pri` ابتدائي، `mid` متوسط) + `OCCASIONS` مناسبات تظهر تلقائياً بتاريخها. تظهر يوم الخميس في مهام اليوم (إنجازها في `teachlogs` بمسار `act-<band>` ومادة "فعالية الخميس") وفي تبويب "فعاليات الخميس"، ومعها مسابقة مراجعة تُبنى من `qa` دروس الأسبوع.
 - `views/portal.html` بوابة ولي الأمر. التطبيق (PWA): `public/manifest.webmanifest` و `public/sw.js` (يُقدَّم من `/sw.js`) و `public/icons/`. `dev.js` + `views/updates.html` تعديل البرنامج من الداخل (لا تُعدَّل ذاتياً).
 
+## الحسابات والتطوير
+- `VIEWS.accounts` (صلاحية reports): قائمة الأرباح والخسائر لفترة (سنة دراسية سبتمبر–أغسطس / سنة ميلادية / فترة مخصصة) — `plData`، الأشهر، الشركاء والمسحوبات (`draws`، للمدير)، الصندوق (`settings.openingCash` + كل المقبوض − المصروفات − المسحوبات)، إيرادات أخرى (`incomes`، صلاحية finance وتدخل في `monthFin`).
+- `VIEWS.develop` (صلاحية develop): مؤشرات الأداء `kpis()`، خطة تطوير بثلاث حالات (`improvements`: idea/doing/done)، ومكتبة أفكار مقترحة `IDEAS`.
+- لوحة الحضور حُذفت من الرئيسية بطلب صاحب الروضة (باقية في صفحة الحضور).
+
 ## المستخدمون والصلاحيات
 - المدير يدخل بكلمة المرور الرئيسية فقط (اسم المستخدم فارغ) وله كل شيء. بقية الأفراد في مجموعة `users` (`username` بحروف صغيرة، `perms`، `active`) ويضيفهم المدير من الإعدادات.
-- الصلاحيات `PERMS` في app.js: attendance, students, teach, finance, reports, staff, comms, settings, delete. التحقق في الخادم (`permGuard` + `RULES`)؛ أي DELETE يحتاج `delete`. للمدير فقط: /updates و /api/dev و /api/users و /api/backup ونسب الشركاء.
+- الصلاحيات `PERMS` في app.js: attendance, students, teach, finance, reports, staff, comms, develop, settings, delete. التحقق في الخادم (`permGuard` + `RULES`)؛ أي DELETE يحتاج `delete`. للمدير فقط: /updates و /api/dev و /api/users و /api/backup و /api/draws ونسب الشركاء والرصيد الافتتاحي.
 - من لا يملك finance أو reports لا تصله المبالغ في /api/all. في الواجهة: `can(p)` و `canFin()` و `D.me`، وأزرار الحذف تُخفى بـ `body.no-delete`.
 
 ## قواعد الحساب (اتفق عليها صاحب الروضة)

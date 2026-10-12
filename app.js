@@ -37,6 +37,7 @@ const Settings = mongoose.model('Settings', new S({
   receiptCounter: { type: Number, default: 1000 },
   migrations: [String],
   appearance: { type: S.Types.Mixed, default: {} },
+  openingCash: { type: Number, default: 0 }, // رصيد الصندوق الافتتاحي
   academic: { start: { type: String, default: '2026-09-06' }, weeks: { type: Number, default: 34 } }, // أول أحد في العام الدراسي وعدد أسابيع الدراسة // الألوان والخط والوضع الليلي وأرقام نسخ الصور
 }, opt));
 
@@ -51,7 +52,15 @@ const PlanEdit = mongoose.model('PlanEdit', new S({ track: String, subject: Stri
 
 // ====== المستخدمون والصلاحيات ======
 // المدير يدخل بكلمة المرور الرئيسية (ADMIN_PASSWORD) وله كل الصلاحيات. بقية الأفراد حسابات يضيفها المدير بصلاحيات محددة.
-const PERMS = ['attendance', 'students', 'teach', 'finance', 'reports', 'staff', 'comms', 'settings', 'delete'];
+const PERMS = ['attendance', 'students', 'teach', 'finance', 'reports', 'staff', 'comms', 'develop', 'settings', 'delete'];
+// ====== الحسابات والتطوير ======
+// إيرادات أخرى غير الرسوم والكتب (تسجيل، فعاليات، مواصلات، تبرع…)
+const Income = mongoose.model('Income', new S({ id: { type: String, index: true }, title: String, category: String, amount: Number, date: String, method: String, note: String }, opt));
+// مسحوبات الشركاء من الأرباح
+const Draw = mongoose.model('Draw', new S({ id: { type: String, index: true }, partner: String, amount: Number, date: String, note: String }, opt));
+// خطة تطوير العمل والمكان
+const Improvement = mongoose.model('Improvement', new S({ id: { type: String, index: true }, title: String, area: String, status: { type: String, default: 'idea' },
+  priority: { type: String, default: 'mid' }, cost: Number, due: String, owner: String, note: String, doneDate: String }, opt));
 const User = mongoose.model('User', new S({ id: { type: String, unique: true }, name: String, username: { type: String, unique: true },
   passwordHash: String, perms: [String], active: { type: Boolean, default: true } }, opt));
 
@@ -176,7 +185,8 @@ async function requireAuth(req, res, next) {
 const can = (req, p) => req.user && (req.user.admin || req.user.perms.includes(p));
 // الصلاحية المطلوبة لكل مسار. الحذف (DELETE) يحتاج صلاحية "الحذف" بالإضافة لصلاحية القسم.
 const RULES = [
-  [/^\/(updates|api\/dev|api\/users|api\/backup|api\/settings\/password)/, 'admin'],
+  [/^\/(updates|api\/dev|api\/users|api\/backup|api\/settings\/password|api\/draws)/, 'admin'],
+  [/^\/api\/incomes/, 'finance'], [/^\/api\/improvements/, 'develop'],
   [/^\/api\/students/, 'students'], [/^\/api\/(payments|expenses|books)/, 'finance'], [/^\/api\/attendance/, 'attendance'],
   [/^\/api\/staff/, 'staff'], [/^\/api\/(notes|announcements)/, 'comms'],
   [/^\/api\/(teach|assessments|plan|academic)/, 'teach'], [/^\/api\/(settings|appearance|assets)/, 'settings'],
@@ -354,13 +364,14 @@ require('./dev')(app, wrap, newId, today);
 app.get('/api/all', wrap(async (req, res) => {
   const s = await getSettings();
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const [students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits, assessments] = await Promise.all([
+  const [students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits, assessments, incomes, draws, improvements] = await Promise.all([
     Student.find().sort({ name: 1 }), Payment.find().sort({ date: -1, createdAt: -1 }),
     Expense.find().sort({ date: -1, createdAt: -1 }),
     Attendance.find({ date: { $gte: new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10) } }),
     Book.find().sort({ date: -1 }), Staff.find().sort({ name: 1 }),
     Note.find().sort({ date: -1, createdAt: -1 }).limit(500), Announcement.find().sort({ date: -1 }),
     TeachLog.find({ date: { $gte: since } }), PlanEdit.find(), Assessment.find(),
+    Income.find().sort({ date: -1 }), Draw.find().sort({ date: -1 }), Improvement.find().sort({ createdAt: 1 }),
   ]);
   const settings = s.toObject(); delete settings.passwordHash;
   const me = { admin: req.user.admin, name: req.user.name, username: req.user.username || 'admin', perms: req.user.perms };
@@ -368,10 +379,11 @@ app.get('/api/all', wrap(async (req, res) => {
   const fin = can(req, 'finance') || can(req, 'reports');
   const MONEY = ['monthlyFee', 'discount', 'oneTimeDiscount', 'oneTimeDiscountNote', 'paid'];
   const studs = fin ? students : students.map(x => { const o = x.toObject(); MONEY.forEach(k => delete o[k]); return o; });
-  if (!fin) delete settings.partners;
+  if (!fin) { delete settings.partners; delete settings.openingCash; }
   res.json({ me, settings, students: studs, payments: fin ? payments : [], expenses: fin ? expenses : [], books: fin ? books : [],
     attendance, staff: can(req, 'staff') ? staff : staff.map(x => ({ id: x.id, name: x.name, role: x.role })),
-    notes, announcements, teachLogs, planEdits, assessments, today: today() });
+    notes, announcements, teachLogs, planEdits, assessments, today: today(),
+    incomes: fin ? incomes : [], draws: fin ? draws : [], improvements: can(req, 'develop') ? improvements : [] });
 }));
 
 // ---- التعليم ----
@@ -451,9 +463,10 @@ app.delete('/api/assets/:key', wrap(async (req, res) => {
 
 // ---- الإعدادات ----
 app.put('/api/settings', wrap(async (req, res) => {
-  const allowed = ['schoolName', 'phone', 'address', 'vatNumber', 'currency', 'halfMonthAfterDay', 'classes', 'expenseCategories', 'partners'];
+  const allowed = ['schoolName', 'phone', 'address', 'vatNumber', 'currency', 'halfMonthAfterDay', 'classes', 'expenseCategories', 'partners', 'openingCash'];
   const upd = {}; for (const k of allowed) if (k in req.body) upd[k] = req.body[k];
-  if (!req.user.admin) delete upd.partners; // نسب الشركاء يغيّرها المدير فقط
+  if (!req.user.admin) { delete upd.partners; delete upd.openingCash; } // نسب الشركاء والرصيد الافتتاحي للمدير فقط
+  if ('openingCash' in upd) upd.openingCash = parseFloat(upd.openingCash) || 0;
   await Settings.updateOne({ key: 'main' }, { $set: upd });
   res.json({ ok: true });
 }));
@@ -630,12 +643,41 @@ app.post('/api/announcements', wrap(async (req, res) => {
 }));
 app.delete('/api/announcements/:id', wrap(async (req, res) => { await Announcement.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
 
+// ---- إيرادات أخرى ومسحوبات الشركاء ----
+app.post('/api/incomes', wrap(async (req, res) => {
+  const amount = parseFloat(req.body.amount);
+  if (!req.body.title || !(amount > 0)) return res.status(400).json({ error: 'اكتب البيان والمبلغ' });
+  res.json(await Income.create({ id: newId(), ...pick(req.body, ['title', 'category', 'method', 'note']), amount, date: req.body.date || today() }));
+}));
+app.delete('/api/incomes/:id', wrap(async (req, res) => { await Income.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
+app.post('/api/draws', wrap(async (req, res) => {
+  const amount = parseFloat(req.body.amount);
+  if (!req.body.partner || !(amount > 0)) return res.status(400).json({ error: 'اختر الشريك واكتب المبلغ' });
+  res.json(await Draw.create({ id: newId(), ...pick(req.body, ['partner', 'note']), amount, date: req.body.date || today() }));
+}));
+app.delete('/api/draws/:id', wrap(async (req, res) => { await Draw.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
+
+// ---- خطة التطوير ----
+const impFields = ['title', 'area', 'status', 'priority', 'cost', 'due', 'owner', 'note'];
+app.post('/api/improvements', wrap(async (req, res) => {
+  const d = pick(req.body, impFields); if (!d.title) return res.status(400).json({ error: 'اكتب عنوان الفكرة' });
+  d.cost = parseFloat(d.cost) || 0;
+  res.json(await Improvement.create({ id: newId(), ...d }));
+}));
+app.put('/api/improvements/:id', wrap(async (req, res) => {
+  const d = pick(req.body, impFields); if ('cost' in d) d.cost = parseFloat(d.cost) || 0;
+  if (d.status === 'done') d.doneDate = today();
+  await Improvement.updateOne({ id: req.params.id }, { $set: d }); res.json({ ok: true });
+}));
+app.delete('/api/improvements/:id', wrap(async (req, res) => { await Improvement.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
+
 // ---- نسخة احتياطية ----
 app.get('/api/backup', wrap(async (req, res) => {
-  const [students, payments, expenses, attendance, books, staff, notes, announcements, settings] = await Promise.all([
-    Student.find(), Payment.find(), Expense.find(), Attendance.find(), Book.find(), Staff.find(), Note.find(), Announcement.find(), Settings.findOne({ key: 'main' }, { passwordHash: 0 })]);
+  const [students, payments, expenses, attendance, books, staff, notes, announcements, settings, incomes, draws, improvements, assessments] = await Promise.all([
+    Student.find(), Payment.find(), Expense.find(), Attendance.find(), Book.find(), Staff.find(), Note.find(), Announcement.find(), Settings.findOne({ key: 'main' }, { passwordHash: 0 }),
+    Income.find(), Draw.find(), Improvement.find(), Assessment.find()]);
   res.setHeader('Content-Disposition', `attachment; filename="rawda-backup-${today()}.json"`);
-  res.json({ exportedAt: new Date().toISOString(), settings, students, payments, expenses, attendance, books, staff, notes, announcements });
+  res.json({ exportedAt: new Date().toISOString(), settings, students, payments, expenses, attendance, books, staff, notes, announcements, incomes, draws, improvements, assessments });
 }));
 
 // ====== معالجة الأخطاء — لا يسقط الخادم ======

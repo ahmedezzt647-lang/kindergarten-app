@@ -112,11 +112,12 @@ function monthFin(m) {
   const books = sumBy(bookPaysIn(m), p => p.amount);
   const out = sumBy(D.expenses.filter(e => monthOf(e.date) === m), e => e.amount);
   const booksOut = sumBy(D.expenses.filter(e => isBookBuy(e) && monthOf(e.date) === m), e => e.amount);
-  const inc = fees + books;
-  return { m, fees, books, inc, out, booksOut, net: inc - out };
+  const other = sumBy((D.incomes || []).filter(x => monthOf(x.date) === m), x => x.amount);
+  const inc = fees + books + other;
+  return { m, fees, books, other, inc, out, booksOut, net: inc - out };
 }
 function activeMonths() {
-  const ms = new Set([...D.payments.map(p => monthOf(p.date)), ...D.expenses.map(e => monthOf(e.date)), ...bookPaysIn().map(p => monthOf(p.date)), monthOf(D.today)].filter(Boolean));
+  const ms = new Set([...D.payments.map(p => monthOf(p.date)), ...D.expenses.map(e => monthOf(e.date)), ...bookPaysIn().map(p => monthOf(p.date)), ...(D.incomes || []).map(x => monthOf(x.date)), monthOf(D.today)].filter(Boolean));
   return [...ms].sort();
 }
 const sumBy = (arr, f) => arr.reduce((a, x) => a + N(f(x)), 0);
@@ -132,10 +133,10 @@ window.addEventListener('hashchange', () => { const v = location.hash.slice(1); 
 const ME = () => D.me || { admin: true, perms: [] };
 const can = p => ME().admin || (ME().perms || []).includes(p);
 const canFin = () => can('finance') || can('reports');
-const VIEW_PERM = { attendance: 'attendance', students: 'students', teach: 'teach', finance: 'finance', staff: 'staff', comms: 'comms', reports: 'reports', appearance: 'settings' };
+const VIEW_PERM = { attendance: 'attendance', students: 'students', teach: 'teach', finance: 'finance', staff: 'staff', comms: 'comms', reports: 'reports', accounts: 'reports', develop: 'develop', appearance: 'settings' };
 const viewAllowed = v => !VIEW_PERM[v] || can(VIEW_PERM[v]);
 const PERM_LABELS = { attendance: '✅ الحضور', students: '👧 الطلاب (إضافة وتعديل)', teach: '📚 التعليم والدرجات', finance: '💰 المالية (دفعات، مصروفات، كتب)',
-  reports: '📊 التقارير ونصيب الشركاء', staff: '🧑‍🏫 الموظفون والرواتب', comms: '📣 التواصل (إعلانات وملاحظات)', settings: '⚙️ الإعدادات والمظهر', delete: '🗑️ الحذف' };
+  reports: '📊 التقارير ونصيب الشركاء', staff: '🧑‍🏫 الموظفون والرواتب', comms: '📣 التواصل (إعلانات وملاحظات)', develop: '🚀 خطة التطوير', settings: '⚙️ الإعدادات والمظهر', delete: '🗑️ الحذف' };
 
 function render() {
   if (!D) return;
@@ -176,15 +177,12 @@ VIEWS.home = () => {
   ${!ME().admin ? `<p class="muted" style="margin-top:-6px">مرحباً ${esc(ME().name)} 👋</p>` : ''}
   <div class="figures"${canFin() ? '' : ' style="grid-template-columns:1fr"'}>
     <button class="fig" onclick="go('attendance')"><span>حضور اليوم</span><b class="num">${present} / ${act_.length}</b><small>${marked < act_.length ? `بقي ${act_.length - marked} بدون تسجيل` : 'اكتمل التسجيل'}</small></button>
-    ${canFin() ? `<button class="fig" onclick="UI.finTab='payments';go('finance')"><span>المقبوض هذا الشهر</span><b class="num money-ok">${fmt(income)}</b><small>${mf.books ? `رسوم ${fmt(mf.fees)} · كتب ${fmt(mf.books)}` : cur()}</small></button>
+    ${canFin() ? `<button class="fig" onclick="UI.finTab='payments';go('finance')"><span>المقبوض هذا الشهر</span><b class="num money-ok">${fmt(income)}</b><small>${mf.books || mf.other ? `رسوم ${fmt(mf.fees)}${mf.books ? ` · كتب ${fmt(mf.books)}` : ''}${mf.other ? ` · أخرى ${fmt(mf.other)}` : ''}` : cur()}</small></button>
     <button class="fig" onclick="UI.finTab='debts';go('finance')"><span>مبالغ متأخرة</span><b class="num money-bad">${fmt(owed)}</b><small>${debtors.length} طالب</small></button>
     <button class="fig" onclick="go('reports')"><span>صافي الشهر</span><b class="num">${fmt(income - spent)}</b><small>${partners().map(p => `${esc(p.name)}: ${fmt((income - spent) * N(p.share) / 100)}`).join(' · ')}</small></button>` : ''}
   </div>
 
   <div class="cols">
-    <section class="panel"><h2>لوحة الحضور اليوم <span class="actions">${marked < act_.length && can('attendance') ? `<button class="btn sm" onclick="markAllPresent()">تسجيل الباقين حاضرين</button>` : ''}</span></h2>
-      ${attendanceBoard(today)}
-    </section>
     <div>
       ${canFin() ? `<section class="panel"><h2>أعلى المتأخرين في السداد ${debtors.length > 5 ? `<button class="btn sm ghost" onclick="UI.finTab='debts';go('finance')">عرض الكل</button>` : ''}</h2>
         ${debtors.length ? debtors.slice(0, 5).map(({ s, b }) => `<div class="list-row"><div><b>${esc(s.name)}</b><div class="muted">${esc(s.grade || '')}</div></div><div class="actions"><span class="money-bad">${money(b.remaining)}</span>${s.parent_phone ? `<a class="btn sm wa" target="_blank" rel="noopener" href="${reminderLink(s, b)}">تذكير</a>` : ''}</div></div>`).join('') : '<p class="empty">لا توجد مبالغ متأخرة 🎉</p>'}
@@ -192,6 +190,8 @@ VIEWS.home = () => {
       ${can('teach') && teachClasses().length && dayIdx(D.today) <= 4 ? `<section class="panel"><h2>التعليم اليوم <button class="btn sm ghost" onclick="UI.teachTab='today';UI.teachDate=D.today;go('teach')">فتح المهام</button></h2>
         ${teachClasses().map(c => { const s = dayStats(c, D.today); return `<div class="list-row"><span>${esc(c)}</span><span class="tag ${s.done === s.total && s.total ? 'ok' : s.done ? 'warn' : 'mute'}">${s.done}/${s.total} مهمة</span></div>`; }).join('')}
         ${dayIdx(D.today) === 4 ? `<div class="note-box" style="margin-top:8px">🎉 اليوم خميس: فعالية ترفيهية تعليمية جاهزة لكل صف في صفحة التعليم.</div>` : ''}</section>` : ''}
+    </div>
+    <div>
       ${canFin() ? `<section class="panel"><h2>الدخل والمصروف — آخر 6 أشهر</h2>${chart6()}
         <div class="board-legend" style="margin-top:10px"><span><i style="background:var(--palm)"></i>مقبوضات</span><span><i style="background:var(--rose)"></i>مصروفات</span></div></section>` : ''}
       <section class="panel"><h2>فعاليات قادمة ${can('comms') ? '<button class="btn sm ghost" onclick="annForm()">+ فعالية</button>' : ''}</h2>
@@ -525,13 +525,13 @@ function paymentForm(sid) {
     <div class="modal-actions"><button class="btn primary" value="ok">حفظ وطباعة الإيصال</button><button class="btn" value="save">حفظ فقط</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
     async (data, btn) => { const r = await act('POST', '/api/payments', data, 'تم تسجيل الدفعة'); if (r && btn === 'ok') printReceipt(r.id); return !!r; });
 }
-function expenseForm() {
+function expenseForm(pre = {}) {
   modal(`<h2>تسجيل مصروف</h2><div class="grid g2">
-    <label class="f">البند *<input name="title" required placeholder="مثال: فاتورة الكهرباء"></label>
-    <label class="f">التصنيف<select name="category">${(D.settings.expenseCategories || []).map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
-    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required></label>
+    <label class="f">البند *<input name="title" required placeholder="مثال: فاتورة الكهرباء" value="${esc(pre.title || '')}"></label>
+    <label class="f">التصنيف<select name="category">${(D.settings.expenseCategories || []).map(c => `<option ${c === pre.category ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required value="${pre.amount || ''}"></label>
     <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label>
-    <label class="f" style="grid-column:1/-1">ملاحظة<input name="note"></label></div>
+    <label class="f" style="grid-column:1/-1">ملاحظة<input name="note" value="${esc(pre.note || '')}"></label></div>
     <div class="modal-actions"><button class="btn primary" value="ok">حفظ المصروف</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
     async data => !!(await act('POST', '/api/expenses', data, 'تم تسجيل المصروف')));
 }
@@ -763,7 +763,7 @@ VIEWS.reports = () => {
 
   <h2 style="font-size:22px;margin:4px 0 14px">${monthName(m)}</h2>
   <div class="figures">
-    <div class="fig"><span>المقبوض في ${monthName(m)}</span><b class="money-ok">${fmt(inc)}</b><small>رسوم ${fmt(mf.fees)} · كتب ${fmt(mf.books)}</small></div>
+    <div class="fig"><span>المقبوض في ${monthName(m)}</span><b class="money-ok">${fmt(inc)}</b><small>رسوم ${fmt(mf.fees)} · كتب ${fmt(mf.books)}${mf.other ? ` · أخرى ${fmt(mf.other)}` : ''}</small></div>
     <div class="fig"><span>مصروفات ${monthName(m)}</span><b class="money-bad">${fmt(out)}</b><small>${mf.booksOut ? `منها شراء كتب ${fmt(mf.booksOut)}` : exps.length + ' بند'}</small></div>
     <div class="fig"><span>صافي ${monthName(m)}</span><b>${fmt(net)}</b><small>${cur()}</small></div>
     <div class="fig"><span>نصيب الشركاء</span><b style="font-size:19px">${P.map(p => `${esc(p.name)}: ${fmt(net * N(p.share) / 100)}`).join('<br>')}</b><small>${P.map(p => fmt(p.share) + '٪').join(' / ')}</small></div>
@@ -802,12 +802,12 @@ VIEWS.reports = () => {
 function partnersPanel() {
   const P = partners(), ms = activeMonths();
   const rows = ms.map(monthFin);
-  const tot = { fees: sumBy(rows, r => r.fees), books: sumBy(rows, r => r.books), inc: sumBy(rows, r => r.inc), out: sumBy(rows, r => r.out) }; tot.net = tot.inc - tot.out;
+  const tot = { fees: sumBy(rows, r => r.fees), books: sumBy(rows, r => r.books), other: sumBy(rows, r => r.other), inc: sumBy(rows, r => r.inc), out: sumBy(rows, r => r.out) }; tot.net = tot.inc - tot.out;
   const share = (net, p) => net * (N(p.share) / 100);
   return `<section class="panel"><h2>ملخص كل الأشهر ونصيب الشركاء <span class="muted">${P.map(p => `${esc(p.name)} ${fmt(p.share)}٪`).join(' · ')}</span></h2>
-  <div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>رسوم</th><th>كتب</th><th>إجمالي المقبوض</th><th>المصروفات</th><th>الصافي</th>${P.map(p => `<th>نصيب ${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
-  ${rows.map(r => `<tr${r.m === UI.repMonth ? ' style="background:var(--palm-2)"' : ''}><td><b>${monthName(r.m)}</b></td><td>${money(r.fees)}</td><td>${money(r.books)}</td><td class="money-ok">${money(r.inc)}</td><td class="money-bad">${money(r.out)}</td><td><b>${money(r.net)}</b></td>${P.map(p => `<td><b class="${r.net < 0 ? 'money-bad' : ''}">${money(share(r.net, p))}</b></td>`).join('')}</tr>`).join('')}
-  <tr style="border-top:2px solid var(--line)"><td><b>الإجمالي</b></td><td><b>${money(tot.fees)}</b></td><td><b>${money(tot.books)}</b></td><td class="money-ok"><b>${money(tot.inc)}</b></td><td class="money-bad"><b>${money(tot.out)}</b></td><td><b>${money(tot.net)}</b></td>${P.map(p => `<td><b>${money(share(tot.net, p))}</b></td>`).join('')}</tr>
+  <div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>رسوم</th><th>كتب</th><th>أخرى</th><th>إجمالي المقبوض</th><th>المصروفات</th><th>الصافي</th>${P.map(p => `<th>نصيب ${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
+  ${rows.map(r => `<tr${r.m === UI.repMonth ? ' style="background:var(--palm-2)"' : ''}><td><b>${monthName(r.m)}</b></td><td>${money(r.fees)}</td><td>${money(r.books)}</td><td>${money(r.other)}</td><td class="money-ok">${money(r.inc)}</td><td class="money-bad">${money(r.out)}</td><td><b>${money(r.net)}</b></td>${P.map(p => `<td><b class="${r.net < 0 ? 'money-bad' : ''}">${money(share(r.net, p))}</b></td>`).join('')}</tr>`).join('')}
+  <tr style="border-top:2px solid var(--line)"><td><b>الإجمالي</b></td><td><b>${money(tot.fees)}</b></td><td><b>${money(tot.books)}</b></td><td><b>${money(tot.other)}</b></td><td class="money-ok"><b>${money(tot.inc)}</b></td><td class="money-bad"><b>${money(tot.out)}</b></td><td><b>${money(tot.net)}</b></td>${P.map(p => `<td><b>${money(share(tot.net, p))}</b></td>`).join('')}</tr>
   </tbody></table></div><p class="muted">المقبوض (رسوم + ما حُصّل من الكتب) يُحسب حسب تاريخ الدفع، والصافي = المقبوض − كل المصروفات (ومنها شراء الكتب). تعديل الأسماء والنسب من الإعدادات.</p></section>`;
 }
 function downloadCsv(name, rows) {
@@ -1335,6 +1335,293 @@ async function changePassword(e) {
   if (await api('PUT', ME().admin ? '/api/settings/password' : '/api/me/password', d)) { toast('تم تغيير كلمة المرور'); e.target.reset(); }
 }
 async function logout() { await api('POST', '/api/logout'); location.href = '/login'; }
+
+/* ---------- الحسابات: الأرباح والخسائر ---------- */
+const ACC_TABS = [['pl', 'الأرباح والخسائر'], ['months', 'الأشهر'], ['partners', 'الشركاء والمسحوبات'], ['cash', 'الصندوق'], ['other', 'إيرادات أخرى']];
+const acadYearOf = d => { const [y, m] = d.split('-').map(Number); return m >= 9 ? y : y - 1; }; // السنة الدراسية من سبتمبر إلى أغسطس
+function periodMonths(from, to) {
+  const out = []; let [y, m] = from.split('-').map(Number); const [ty, tm] = to.split('-').map(Number);
+  while ((y < ty || (y === ty && m <= tm)) && out.length < 120) { out.push(`${y}-${String(m).padStart(2, '0')}`); if (++m > 12) { m = 1; y++; } }
+  return out;
+}
+function accPeriod() {
+  UI.accP ||= 'ay:' + acadYearOf(D.today);
+  const [k, a, b] = UI.accP.split(':');
+  if (k === 'ay') return { label: `السنة الدراسية ${a}/${+a + 1}`, from: `${a}-09`, to: `${+a + 1}-08` };
+  if (k === 'cy') return { label: `سنة ${a}`, from: `${a}-01`, to: `${a}-12` };
+  return { label: `من ${monthName(a)} إلى ${monthName(b)}`, from: a, to: b };
+}
+function periodSelect() {
+  const months = activeMonths(); const y0 = +months[0].slice(0, 4), y1 = +D.today.slice(0, 4);
+  const opts_ = [];
+  for (let y = acadYearOf(D.today); y >= acadYearOf(months[0] + '-01'); y--) opts_.push([`ay:${y}`, `السنة الدراسية ${y}/${y + 1}`]);
+  for (let y = y1; y >= y0; y--) opts_.push([`cy:${y}`, `السنة الميلادية ${y}`]);
+  const isCustom = UI.accP.startsWith('rg:');
+  const [, a, b] = isCustom ? UI.accP.split(':') : [, months[0], monthOf(D.today)];
+  return `<div class="filters" style="align-items:center">
+    <select onchange="UI.accP=this.value==='rg'?'rg:${a}:${b}':this.value;render()" aria-label="الفترة">${opts_.map(([v, l]) => `<option value="${v}" ${v === UI.accP ? 'selected' : ''}>${l}</option>`).join('')}<option value="rg" ${isCustom ? 'selected' : ''}>فترة مخصصة…</option></select>
+    ${isCustom ? `<label class="muted" style="display:flex;gap:6px;align-items:center">من <input type="month" value="${a}" onchange="UI.accP='rg:'+this.value+':${b}';render()"></label>
+    <label class="muted" style="display:flex;gap:6px;align-items:center">إلى <input type="month" value="${b}" onchange="UI.accP='rg:${a}:'+this.value;render()"></label>` : ''}</div>`;
+}
+function plData(P) {
+  const ms = periodMonths(P.from, P.to); const inM = d => ms.includes(monthOf(d));
+  const add = (o, k, v) => { o[k || 'أخرى'] = (o[k || 'أخرى'] || 0) + N(v); };
+  const fees = sumBy(D.payments.filter(p => inM(p.date)), p => p.amount);
+  const books = sumBy(bookPaysIn().filter(p => inM(p.date)), p => p.amount);
+  const others = {}; (D.incomes || []).filter(x => inM(x.date)).forEach(x => add(others, x.category, x.amount));
+  const exp = {}; D.expenses.filter(e => inM(e.date)).forEach(e => add(exp, e.category, e.amount));
+  const otherT = Object.values(others).reduce((a, v) => a + v, 0), out = Object.values(exp).reduce((a, v) => a + v, 0);
+  const inc = fees + books + otherT, net = inc - out;
+  // الرسوم المستحقة عن أشهر الفترة التي حلّت حتى الآن (أساس الاستحقاق)
+  const dueMs = ms.filter(m => m <= monthOf(D.today));
+  const due = sumBy(D.students, s => sumBy(dueMs.filter(m => s.join_date && m >= monthOf(s.join_date)), m => monthDue(s, m)));
+  const months = ms.map(monthFin);
+  const draws = (D.draws || []).filter(x => inM(x.date));
+  return { ms, fees, books, others, otherT, exp, inc, out, net, due, months, draws };
+}
+const plTag = v => v >= 0 ? `<span class="tag ok">ربح</span>` : `<span class="tag bad">خسارة</span>`;
+const signed = v => `<b class="${v < 0 ? 'money-bad' : 'money-ok'}">${v < 0 ? '(' + fmt(-v) + ')' : fmt(v)}</b>`;
+
+VIEWS.accounts = () => {
+  UI.accTab ||= 'pl';
+  const P = accPeriod(), d = plData(P);
+  return `<div class="head"><div><h1>الحسابات</h1><p>الأرباح والخسائر والإيرادات والمصروفات — ${esc(P.label)}</p></div>
+    <div class="actions"><button class="btn" onclick="printPL()">طباعة قائمة الدخل</button><button class="btn" onclick="exportPL()">تصدير Excel</button></div></div>
+  ${periodSelect()}
+  <div class="tabs" role="tablist">${ACC_TABS.map(([k, l]) => `<button role="tab" aria-selected="${UI.accTab === k}" onclick="UI.accTab='${k}';render()">${l}</button>`).join('')}</div>
+  ${ACC[UI.accTab](P, d)}`;
+};
+function statementHtml(P, d) {
+  const pr = partners();
+  const line = (label, v, cls = '', note = '') => `<tr class="${cls}"><td>${label}${note ? ` <span class="muted">${note}</span>` : ''}</td><td class="num">${typeof v === 'string' ? v : money(v)}</td></tr>`;
+  const expRows = Object.entries(d.exp).sort((a, b) => b[1] - a[1]);
+  return `<table class="stmt">
+    <tr class="sec"><td colspan="2">الإيرادات</td></tr>
+    ${line('الرسوم الدراسية المحصّلة', d.fees)}
+    ${line('مبيعات الكتب المحصّلة', d.books)}
+    ${Object.entries(d.others).map(([k, v]) => line('إيرادات أخرى: ' + esc(k), v)).join('')}
+    ${line('<b>إجمالي الإيرادات</b>', `<b>${money(d.inc)}</b>`, 'tot')}
+    <tr class="sec"><td colspan="2">المصروفات</td></tr>
+    ${expRows.map(([k, v]) => line(esc(k), v, '', d.out ? Math.round(v / d.out * 100) + '٪' : '')).join('') || line('لا توجد مصروفات', 0)}
+    ${line('<b>إجمالي المصروفات</b>', `<b>${money(d.out)}</b>`, 'tot')}
+    <tr class="net ${d.net < 0 ? 'loss' : ''}"><td>${d.net < 0 ? 'صافي الخسارة' : 'صافي الربح'}</td><td class="num">${money(Math.abs(d.net))}</td></tr>
+    <tr class="sec"><td colspan="2">توزيع ${d.net < 0 ? 'الخسارة' : 'الربح'} على الشركاء</td></tr>
+    ${pr.map(p => line(`${esc(p.name)} (${fmt(p.share)}٪)`, signed(d.net * N(p.share) / 100))).join('')}
+  </table>`;
+}
+const ACC = {
+  pl(P, d) {
+    const margin = d.inc ? Math.round(d.net / d.inc * 100) : 0;
+    const best = [...d.months].sort((a, b) => b.net - a.net)[0], worst = [...d.months].filter(m => m.inc || m.out).sort((a, b) => a.net - b.net)[0];
+    const live = d.months.filter(m => m.inc || m.out).length || 1;
+    const topExp = Object.entries(d.exp).sort((a, b) => b[1] - a[1])[0];
+    const max = Math.max(1, ...d.months.map(m => Math.max(m.inc, m.out)));
+    return `<div class="figures">
+      <div class="fig"><span>إجمالي الإيرادات</span><b class="money-ok">${fmt(d.inc)}</b><small>رسوم ${fmt(d.fees)} · كتب ${fmt(d.books)}${d.otherT ? ` · أخرى ${fmt(d.otherT)}` : ''}</small></div>
+      <div class="fig"><span>إجمالي المصروفات</span><b class="money-bad">${fmt(d.out)}</b><small>${Object.keys(d.exp).length} بند</small></div>
+      <div class="fig"><span>${d.net < 0 ? 'صافي الخسارة' : 'صافي الربح'}</span><b class="${d.net < 0 ? 'money-bad' : 'money-ok'}">${fmt(Math.abs(d.net))}</b><small>${plTag(d.net)} ${cur()}</small></div>
+      <div class="fig"><span>هامش الربح</span><b>${margin}٪</b><small>الربح ÷ الإيرادات</small></div></div>
+    <div class="cols">
+      <section class="panel"><h2>قائمة الدخل (الأرباح والخسائر)</h2><p class="muted" style="margin-top:0">${esc(P.label)} · على أساس ما دخل الصندوق وخرج منه فعلاً</p>${statementHtml(P, d)}</section>
+      <div>
+        <section class="panel"><h2>الإيراد والمصروف شهرياً</h2><div class="chart${d.months.length > 6 ? ' many' : ''}">${d.months.map(m => `<div class="m"><div class="bars">
+          <div class="bar in" style="height:${m.inc / max * 100}%" title="إيرادات ${fmt(m.inc)}"></div><div class="bar out" style="height:${m.out / max * 100}%" title="مصروفات ${fmt(m.out)}"></div></div>
+          <label>${new Date(m.m + '-15').toLocaleDateString('ar-SA-u-ca-gregory', { month: 'short' })}</label></div>`).join('')}</div>
+          <div class="board-legend" style="margin-top:10px"><span><i style="background:var(--palm)"></i>إيرادات</span><span><i style="background:var(--rose)"></i>مصروفات</span></div></section>
+        <section class="panel"><h2>مؤشرات الفترة</h2>
+          <div class="list-row"><span>الرسوم المستحقة حتى اليوم (عن أشهر الفترة)</span><b>${money(d.due)}</b></div>
+          <div class="list-row"><span>الرسوم المحصّلة خلال الفترة</span><b class="money-ok">${money(d.fees)}</b></div>
+          <div class="list-row"><span>نسبة التحصيل</span><b>${d.due ? Math.round(d.fees / d.due * 100) : 100}٪</b></div>
+          <div class="list-row"><span>متوسط الربح الشهري</span>${signed(d.net / live)}</div>
+          ${best && (best.inc || best.out) ? `<div class="list-row"><span>أفضل شهر</span><b>${monthName(best.m)} (${fmt(best.net)})</b></div>` : ''}
+          ${worst ? `<div class="list-row"><span>أضعف شهر</span><b>${monthName(worst.m)} (${fmt(worst.net)})</b></div>` : ''}
+          ${topExp ? `<div class="list-row"><span>أكبر بند مصروفات</span><b>${esc(topExp[0])} (${d.out ? Math.round(topExp[1] / d.out * 100) : 0}٪)</b></div>` : ''}
+          <p class="muted">الإيرادات والمصروفات حسب تاريخ الدفع. "المستحق" يوضح ما كان يجب تحصيله عن الأشهر التي مرّت من الفترة؛ الفرق بينه وبين المحصّل هو المتأخرات.</p></section>
+      </div></div>`;
+  },
+  months(P, d) {
+    let cum = 0;
+    return `<section class="panel"><h2>الأرباح والخسائر شهراً بشهر — ${esc(P.label)}</h2><div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>رسوم</th><th>كتب</th><th>أخرى</th><th>الإيرادات</th><th>المصروفات</th><th>الصافي</th><th>التراكمي</th></tr></thead><tbody>
+    ${d.months.map(m => { cum += m.net; const empty = !m.inc && !m.out; return `<tr${empty ? ' class="dim"' : ''}><td><b>${monthName(m.m)}</b></td><td>${money(m.fees)}</td><td>${money(m.books)}</td><td>${money(m.other)}</td><td class="money-ok">${money(m.inc)}</td><td class="money-bad">${money(m.out)}</td><td>${empty ? '—' : signed(m.net) + ' ' + plTag(m.net)}</td><td>${signed(cum)}</td></tr>`; }).join('')}
+    <tr class="grandtotal"><td><b>الإجمالي</b></td><td><b>${money(d.fees)}</b></td><td><b>${money(d.books)}</b></td><td><b>${money(d.otherT)}</b></td><td class="money-ok"><b>${money(d.inc)}</b></td><td class="money-bad"><b>${money(d.out)}</b></td><td>${signed(d.net)} ${plTag(d.net)}</td><td></td></tr>
+    </tbody></table></div></section>`;
+  },
+  partners(P, d) {
+    const pr = partners();
+    return `<section class="panel"><h2>حساب الشركاء — ${esc(P.label)} ${ME().admin ? '<button class="btn sm primary" onclick="drawForm()">+ تسجيل سحب</button>' : ''}</h2>
+    <div class="tbl-wrap"><table><thead><tr><th>الشريك</th><th>النسبة</th><th>نصيبه من ${d.net < 0 ? 'الخسارة' : 'الربح'}</th><th>ما سحبه</th><th>المتبقي له</th></tr></thead><tbody>
+    ${pr.map(p => { const share = d.net * N(p.share) / 100, took = sumBy(d.draws.filter(x => x.partner === p.name), x => x.amount);
+      return `<tr><td><b>${esc(p.name)}</b></td><td>${fmt(p.share)}٪</td><td>${signed(share)}</td><td class="money-bad">${money(took)}</td><td>${signed(share - took)}</td></tr>`; }).join('')}
+    </tbody></table></div>
+    <p class="muted">"المتبقي له" = نصيبه من صافي ربح الفترة − ما سحبه خلالها. السحب لا يُعدّ مصروفاً ولا يغيّر الربح، لكنه يُنقص رصيد الصندوق.</p></section>
+    <section class="panel"><h2>المسحوبات خلال الفترة</h2>
+    ${d.draws.map(x => `<div class="list-row"><span><b>${esc(x.partner)}</b> <span class="muted">${esc(fmtDate(x.date))}${x.note ? ' · ' + esc(x.note) : ''}</span></span><span class="actions"><b class="money-bad">${money(x.amount)}</b>${ME().admin ? `<button class="btn sm danger" onclick="del('draws','${x.id}','هذا السحب')">حذف</button>` : ''}</span></div>`).join('') || '<p class="empty">لا توجد مسحوبات في هذه الفترة</p>'}</section>`;
+  },
+  cash() {
+    const all = { fees: sumBy(D.payments, p => p.amount), books: sumBy(bookPaysIn(), p => p.amount), other: sumBy(D.incomes || [], x => x.amount),
+      out: sumBy(D.expenses, e => e.amount), draws: sumBy(D.draws || [], x => x.amount) };
+    const open = N(D.settings.openingCash);
+    const bal_ = open + all.fees + all.books + all.other - all.out - all.draws;
+    return `<section class="panel"><h2>رصيد الصندوق الآن</h2>
+      <table class="stmt">
+        <tr><td>الرصيد الافتتاحي ${ME().admin ? '<button class="btn sm ghost" onclick="openingForm()">تعديل</button>' : ''}</td><td class="num">${money(open)}</td></tr>
+        <tr><td>+ الرسوم المحصّلة (كل الفترات)</td><td class="num">${money(all.fees)}</td></tr>
+        <tr><td>+ المحصّل من الكتب</td><td class="num">${money(all.books)}</td></tr>
+        <tr><td>+ إيرادات أخرى</td><td class="num">${money(all.other)}</td></tr>
+        <tr><td>− المصروفات</td><td class="num money-bad">${money(all.out)}</td></tr>
+        <tr><td>− مسحوبات الشركاء</td><td class="num money-bad">${money(all.draws)}</td></tr>
+        <tr class="net ${bal_ < 0 ? 'loss' : ''}"><td>الرصيد المفترض في الصندوق والبنك</td><td class="num">${money(bal_)}</td></tr>
+      </table>
+      <p class="muted">قارن هذا الرقم بما هو موجود فعلاً (نقداً وفي الحساب البنكي). إذا اختلف فهناك دفعة أو مصروف لم يُسجّل.</p></section>`;
+  },
+  other(P, d) {
+    const ms = d.ms, list = (D.incomes || []).filter(x => ms.includes(monthOf(x.date)));
+    return `<section class="panel"><h2>إيرادات أخرى — ${esc(P.label)} <span class="money-ok">${money(d.otherT)}</span> ${can('finance') ? '<button class="btn sm primary" onclick="incomeForm()">+ إيراد</button>' : ''}</h2>
+    <p class="muted" style="margin-top:0">أي دخل غير الرسوم الشهرية والكتب: رسوم تسجيل، مواصلات، زي مدرسي، فعاليات ورحلات، دعم أو تبرع…</p>
+    ${list.map(x => `<div class="list-row"><span><b>${esc(x.title)}</b> <span class="tag mute">${esc(x.category || 'أخرى')}</span> <span class="muted">${esc(fmtDate(x.date))}${x.note ? ' · ' + esc(x.note) : ''}</span></span><span class="actions"><b class="money-ok">${money(x.amount)}</b><button class="btn sm danger" onclick="del('incomes','${x.id}','هذا الإيراد')">حذف</button></span></div>`).join('') || '<p class="empty">لا توجد إيرادات أخرى في هذه الفترة</p>'}</section>`;
+  },
+};
+const INCOME_CATS = ['رسوم تسجيل', 'مواصلات', 'زي مدرسي', 'رحلات وفعاليات', 'دعم وتبرعات', 'أخرى'];
+function incomeForm() {
+  modal(`<h2>تسجيل إيراد آخر</h2><div class="grid g2">
+    <label class="f">البيان *<input name="title" required placeholder="مثال: رسوم تسجيل 3 طلاب"></label>
+    <label class="f">التصنيف<select name="category">${INCOME_CATS.map(c => `<option>${c}</option>`).join('')}</select></label>
+    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label>
+    <label class="f">طريقة الدفع<select name="method">${['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'].map(m => `<option>${m}</option>`).join('')}</select></label>
+    <label class="f">ملاحظة<input name="note"></label></div>
+    <div class="modal-actions"><button class="btn primary" value="ok">حفظ</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => !!(await act('POST', '/api/incomes', data, 'تم تسجيل الإيراد')));
+}
+function drawForm() {
+  modal(`<h2>تسجيل سحب شريك من الأرباح</h2><div class="grid g2">
+    <label class="f">الشريك *<select name="partner" required>${partners().map(p => `<option>${esc(p.name)}</option>`).join('')}</select></label>
+    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label>
+    <label class="f">ملاحظة<input name="note" placeholder="مثال: أرباح شهر أكتوبر"></label></div>
+    <div class="modal-actions"><button class="btn primary" value="ok">حفظ</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => !!(await act('POST', '/api/draws', data, 'تم تسجيل السحب')));
+}
+function openingForm() {
+  modal(`<h2>الرصيد الافتتاحي للصندوق</h2><p class="muted" style="margin-top:0">المبلغ الذي كان في الصندوق والبنك قبل أول دفعة سُجّلت في البرنامج.</p>
+    <label class="f">المبلغ<input type="number" step="any" name="openingCash" value="${N(D.settings.openingCash)}"></label>
+    <div class="modal-actions"><button class="btn primary" value="ok">حفظ</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => !!(await act('PUT', '/api/settings', { openingCash: data.openingCash }, 'تم الحفظ')));
+}
+function printPL() {
+  const P = accPeriod(), d = plData(P);
+  printDoc('قائمة الأرباح والخسائر', `<h2>${esc(P.label)}</h2>${statementHtml(P, d)}
+    <h3>ملخص الأشهر</h3><table><tr><th>الشهر</th><th>الإيرادات</th><th>المصروفات</th><th>الصافي</th></tr>
+    ${d.months.filter(m => m.inc || m.out).map(m => `<tr><td>${monthName(m.m)}</td><td>${money(m.inc)}</td><td>${money(m.out)}</td><td>${m.net < 0 ? '(' + money(-m.net) + ')' : money(m.net)}</td></tr>`).join('')}</table>
+    <div class="sig"><div>المدير</div><div>الشريك</div></div>
+    <style>.stmt td{padding:7px 9px}.stmt .sec td{background:#EEF3F2;font-weight:700}.stmt .tot td{border-top:2px solid #145741}.stmt .net td{font-weight:700;font-size:18px;color:#145741;border-top:3px double #145741}.stmt .net.loss td{color:#B4314C}.amt{white-space:nowrap}.muted{color:#7D8B99;font-size:12px}</style>`);
+}
+function exportPL() {
+  const P = accPeriod(), d = plData(P);
+  downloadCsv('الأرباح-والخسائر', [['الشهر', 'رسوم', 'كتب', 'أخرى', 'الإيرادات', 'المصروفات', 'الصافي'],
+    ...d.months.map(m => [monthName(m.m), m.fees, m.books, m.other, m.inc, m.out, m.net]), ['الإجمالي', d.fees, d.books, d.otherT, d.inc, d.out, d.net],
+    [], ['المصروفات حسب البند', ''], ...Object.entries(d.exp).map(([k, v]) => [k, v])]);
+}
+
+/* ---------- التطوير: مؤشرات الأداء وخطة تطوير العمل والمكان ---------- */
+const AREAS = ['المكان والبيئة', 'التعليم', 'أولياء الأمور والتسويق', 'الإدارة والمالية', 'الموظفون', 'الصحة والسلامة'];
+const IMP_STATUS = [['idea', '💡 أفكار'], ['doing', '🔨 قيد التنفيذ'], ['done', '✅ تم']];
+const PRIO = { high: ['عالية', 'bad'], mid: ['متوسطة', 'warn'], low: ['منخفضة', 'mute'] };
+// مكتبة أفكار مقترحة لتطوير الروضة: [المجال، العنوان، الشرح، تكلفة تقديرية بالريال]
+const IDEAS = [
+  ['المكان والبيئة', 'ركن قراءة مريح في كل فصل', 'رف كتب منخفض، وسائد، سجادة وإضاءة دافئة. يرفع حب القراءة ويعطي الطفل مكاناً هادئاً.', 800],
+  ['المكان والبيئة', 'تقسيم الفصل إلى أركان تعلم', 'ركن الفن، ركن العلوم، ركن البناء والمكعبات، ركن التمثيل. الطفل يتعلم باللعب ويتنقل بين الأركان.', 1500],
+  ['المكان والبيئة', 'تظليل الساحة وعشب صناعي وألعاب آمنة', 'مظلات، عشب صناعي، زحليقة وأرجوحة بأرضية مطاطية. أهم ما يجذب الأهالي في الزيارة الأولى.', 8000],
+  ['المكان والبيئة', 'جداريات تعليمية بالعربي والإنجليزي', 'الحروف، الأرقام، الألوان، الأيام، على الجدران والممرات بألوان مبهجة.', 600],
+  ['المكان والبيئة', 'ركن عرض أعمال الأطفال عند المدخل', 'لوحة تتغير كل أسبوع بأعمال الأطفال، يراها الأهالي يومياً.', 300],
+  ['المكان والبيئة', 'حديقة صغيرة يزرعها الأطفال', 'أصص وبذور يتابعها الأطفال أسبوعياً، مرتبطة بدروس العلوم.', 400],
+  ['المكان والبيئة', 'تحسين الإضاءة والتهوية والتكييف', 'إضاءة بيضاء كافية، تنظيف وصيانة المكيفات قبل الصيف.', 3000],
+  ['التعليم', 'شاشة تفاعلية أو بروجكتر لكل فصل', 'لعرض القصص والأناشيد والفيديوهات التعليمية القصيرة.', 2500],
+  ['التعليم', 'تقرير مهارات لكل طفل كل شهرين', 'تقييم القراءة والحساب والسلوك يُرسل لولي الأمر (الدرجات موجودة في البرنامج).', 0],
+  ['التعليم', 'رحلة تعليمية كل فصل دراسي', 'مزرعة، مكتبة عامة، متحف، مركز علوم — بموافقة الأهالي ورسوم رمزية.', 1500],
+  ['التعليم', 'حقيبة نشاط منزلية أسبوعية', 'ورقة نشاط ممتعة يعملها الطفل مع أهله في الإجازة الأسبوعية.', 500],
+  ['التعليم', 'نادي روبوت وبرمجة مبسطة للكبار', 'ساعة أسبوعية بألعاب برمجة بدون شاشة ثم بتطبيقات بسيطة.', 2000],
+  ['أولياء الأمور والتسويق', 'حساب انستقرام/سناب للروضة', 'صور الفعاليات والإنجازات (بموافقة الأهالي) — أقوى تسويق مجاني.', 0],
+  ['أولياء الأمور والتسويق', 'يوم مفتوح للتسجيل', 'جولة للأهالي وأنشطة للأطفال وخصم لمن يسجّل في نفس اليوم.', 500],
+  ['أولياء الأمور والتسويق', 'برنامج "رشّح صديقاً"', 'خصم شهر أو نصف شهر لولي الأمر الذي يجلب طالباً جديداً.', 0],
+  ['أولياء الأمور والتسويق', 'استبيان رضا أولياء الأمور', 'استبيان قصير كل فصل (نموذج جوجل) لمعرفة ما يحبونه وما يزعجهم.', 0],
+  ['أولياء الأمور والتسويق', 'لوحة خارجية وموقع على خرائط جوجل', 'لوحة واضحة بالاسم والجوال، وتسجيل الروضة في خرائط جوجل مع صور.', 1200],
+  ['أولياء الأمور والتسويق', 'مجلس أمهات شهري', 'لقاء قصير لعرض ما تعلمه الأطفال وسماع الاقتراحات.', 200],
+  ['الإدارة والمالية', 'خصم للدفع الفصلي أو السنوي مقدماً', 'مثلاً 5٪ للدفع عن فصل كامل — يحسّن السيولة ويقلل المتأخرات.', 0],
+  ['الإدارة والمالية', 'جهاز مدى للدفع', 'يسهّل الدفع على الأهالي ويقلل النقد في الروضة.', 0],
+  ['الإدارة والمالية', 'هدف ربح شهري ومتابعته', 'حدد هدفاً من صفحة الحسابات وراجع الأرباح والخسائر أول كل شهر.', 0],
+  ['الإدارة والمالية', 'تذكير المتأخرات أول كل شهر', 'زر التذكير بالواتساب موجود في المالية ← المتأخرات.', 0],
+  ['الإدارة والمالية', 'مراجعة الفواتير والمشتريات شهرياً', 'الكهرباء والماء والمشتريات: أين يمكن التوفير؟', 0],
+  ['الموظفون', 'دورة تدريبية للمعلمات', 'التعلم باللعب وإدارة الصف والتعامل مع الطفل كثير الحركة.', 1000],
+  ['الموظفون', 'حافز شهري للمعلمة المتميزة', 'مكافأة رمزية وشهادة، حسب إنجاز المهام في قسم التعليم.', 300],
+  ['الموظفون', 'اجتماع أسبوعي 20 دقيقة', 'مراجعة خطة الأسبوع والأطفال الذين يحتاجون متابعة.', 0],
+  ['الموظفون', 'وصف مهام مكتوب لكل موظف', 'يوضح المسؤوليات ويقلل الخلافات.', 0],
+  ['الصحة والسلامة', 'حقيبة إسعافات وتدريب المعلمات', 'حقيبة مكتملة ودورة إسعافات أولية للمعلمات.', 600],
+  ['الصحة والسلامة', 'كاميرات في الممرات والساحة', 'تزيد ثقة الأهالي وتحمي الأطفال والمعلمات.', 2500],
+  ['الصحة والسلامة', 'خطة إخلاء وطفايات حريق', 'لوحات خروج، طفايات صالحة، وتدريب إخلاء مرة كل فصل.', 800],
+  ['الصحة والسلامة', 'حماية الزوايا والمقابس وتثبيت الأثاث', 'واقيات زوايا وأغطية مقابس وتثبيت الرفوف في الجدار.', 300],
+  ['الصحة والسلامة', 'سجل استلام الأطفال', 'تسجيل من استلم الطفل يومياً وأسماء المصرح لهم فقط.', 0],
+];
+function kpis() {
+  const act_ = active(), cap = sumBy(D.settings.classes || [], c => c.capacity);
+  const since = addDays(D.today, -30), att = D.attendance.filter(a => a.date >= since);
+  const attRate = att.length ? Math.round(att.filter(a => ['present', 'late'].includes(a.status)).length / att.length * 100) : null;
+  const newM = D.students.filter(s => monthOf(s.join_date) === monthOf(D.today)).length;
+  const left = D.students.filter(s => s.status === 'inactive').length;
+  const out = [
+    ['الطلاب المستمرون', act_.length, cap ? `من طاقة ${cap} مقعد (${Math.round(act_.length / cap * 100)}٪ إشغال)` : 'حدد سعة كل صف من الإعدادات لمعرفة نسبة الإشغال', cap && act_.length / cap < .7 ? 'warn' : 'ok'],
+    ['التحقوا هذا الشهر', newM, 'هدف مقترح: 3 طلاب جدد شهرياً', newM >= 3 ? 'ok' : 'warn'],
+    ['نسبة الحضور (30 يوماً)', attRate === null ? '—' : attRate + '٪', attRate === null ? 'سجّل الحضور يومياً لتظهر النسبة' : attRate < 85 ? 'أقل من 85٪: تواصل مع أهالي كثيري الغياب' : 'ممتازة', attRate !== null && attRate < 85 ? 'warn' : 'ok'],
+    ['المنقطعون', left, D.students.length ? `${Math.round(left / D.students.length * 100)}٪ من كل المسجلين — اسأل عن سبب الانقطاع` : '', left ? 'warn' : 'ok'],
+  ];
+  if (canFin()) {
+    const b = D.students.map(bal), due = sumBy(b, x => x.totalDue), paid = sumBy(b, x => x.paid);
+    const lm = prevMonth(monthOf(D.today)), f = monthFin(lm);
+    out.push(['نسبة التحصيل', (due ? Math.round(paid / due * 100) : 100) + '٪', paid < due ? `المتأخر ${fmt(due - paid)} ${cur()}` : 'لا متأخرات', due && paid / due < .9 ? 'warn' : 'ok']);
+    if (act_.length) out.push(['ربح الطالب الواحد شهرياً', fmt((f.inc - f.out) / act_.length), `في ${monthName(lm)}: إيراد الطالب ${fmt(f.inc / act_.length)} − تكلفته ${fmt(f.out / act_.length)}`, f.inc >= f.out ? 'ok' : 'bad']);
+  }
+  return out;
+}
+VIEWS.develop = () => {
+  const items = D.improvements || [];
+  const open_ = items.filter(x => x.status !== 'done');
+  UI.ideaArea ||= AREAS[0];
+  const card = x => { const pr = PRIO[x.priority] || PRIO.mid; const nx = { idea: 'doing', doing: 'done' }[x.status];
+    return `<div class="imp-card"><div class="imp-top"><b>${esc(x.title)}</b><span class="tag ${pr[1]}">${pr[0]}</span></div>
+      <div class="muted">${esc(x.area || '')}${x.cost ? ` · ${money(x.cost)}` : ''}${x.due ? ` · قبل ${esc(fmtDate(x.due))}` : ''}${x.owner ? ` · ${esc(x.owner)}` : ''}</div>
+      ${x.note ? `<p class="imp-note">${esc(x.note)}</p>` : ''}
+      <div class="actions">${nx ? `<button class="btn sm primary" onclick="impMove('${x.id}','${nx}')">${nx === 'doing' ? 'ابدأ التنفيذ ←' : 'تم ✓'}</button>` : `<span class="muted">${x.doneDate ? 'أُنجز ' + esc(fmtDate(x.doneDate)) : ''}</span>`}
+      ${x.status === 'done' && x.cost && can('finance') ? `<button class="btn sm" onclick="expenseForm({title:'${esc(x.title).replace(/'/g, '')}',amount:${N(x.cost)},note:'من خطة التطوير'})">سجّل التكلفة كمصروف</button>` : ''}
+      <button class="btn sm ghost" onclick="impForm('${x.id}')">تعديل</button><button class="btn sm danger" onclick="del('improvements','${x.id}','هذه الفكرة')">حذف</button></div></div>`; };
+  return `<div class="head"><div><h1>التطوير</h1><p>مؤشرات الأداء وخطة تطوير العمل والمكان</p></div>
+    <div class="actions"><button class="btn primary" onclick="impForm()">+ فكرة تطوير</button></div></div>
+  <section class="panel"><h2>مؤشرات الأداء</h2><div class="kpis">${kpis().map(([t, v, h, c]) => `<div class="kpi ${c}"><span>${t}</span><b>${v}</b><small>${esc(h)}</small></div>`).join('')}</div></section>
+  <section class="panel"><h2>خطة التطوير <span class="muted">${open_.length} مفتوحة${sumBy(open_, x => x.cost) ? ` · الميزانية التقديرية ${fmt(sumBy(open_, x => x.cost))} ${cur()}` : ''}</span></h2>
+    <div class="kanban">${IMP_STATUS.map(([k, l]) => { const xs = items.filter(x => (x.status || 'idea') === k).sort((a, b) => ['high', 'mid', 'low'].indexOf(a.priority) - ['high', 'mid', 'low'].indexOf(b.priority));
+      return `<div class="kcol"><h3>${l} <span class="tag mute">${xs.length}</span></h3>${xs.map(card).join('') || '<p class="empty">لا يوجد</p>'}</div>`; }).join('')}</div></section>
+  <section class="panel"><h2>💡 أفكار مقترحة لتطوير الروضة <span class="muted">اضغط "أضف للخطة" لنقل الفكرة إلى خطتك وتعديلها</span></h2>
+    <div class="tabs" role="tablist">${AREAS.map(a => `<button role="tab" aria-selected="${UI.ideaArea === a}" onclick="UI.ideaArea='${a}';render()">${a}</button>`).join('')}</div>
+    ${IDEAS.filter(i => i[0] === UI.ideaArea).map(([a, t, d, c], i) => { const has = items.some(x => x.title === t);
+      return `<div class="list-row"><div><b>${t}</b><div class="muted">${d}${c ? ` · تكلفة تقديرية ${money(c)}` : ' · بدون تكلفة تقريباً'}</div></div>
+      ${has ? '<span class="tag ok">في الخطة ✓</span>' : `<button class="btn sm primary" onclick="addIdea(${IDEAS.findIndex(x => x[1] === t)})">أضف للخطة</button>`}</div>`; }).join('')}
+    <p class="muted">التكاليف تقديرية بالريال للتوجيه فقط.</p></section>`;
+};
+async function addIdea(i) { const [area, title, note, cost] = IDEAS[i]; await act('POST', '/api/improvements', { area, title, note, cost, status: 'idea', priority: 'mid' }, 'أُضيفت للخطة'); }
+async function impMove(id, status) { await act('PUT', `/api/improvements/${id}`, { status }, status === 'done' ? 'أحسنت! تم الإنجاز 🎉' : 'بدأ التنفيذ'); }
+function impForm(id) {
+  const x = id ? D.improvements.find(i => i.id === id) : { status: 'idea', priority: 'mid', area: AREAS[0] };
+  modal(`<h2>${id ? 'تعديل فكرة التطوير' : 'فكرة تطوير جديدة'}</h2><div class="grid g2">
+    <label class="f" style="grid-column:1/-1">العنوان *<input name="title" required value="${esc(x.title || '')}" placeholder="مثال: تظليل الساحة"></label>
+    <label class="f">المجال<select name="area">${AREAS.map(a => `<option ${a === x.area ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
+    <label class="f">الحالة<select name="status">${IMP_STATUS.map(([k, l]) => `<option value="${k}" ${k === x.status ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="f">الأولوية<select name="priority">${Object.entries(PRIO).map(([k, [l]]) => `<option value="${k}" ${k === x.priority ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="f">التكلفة التقديرية<input type="number" min="0" step="any" name="cost" value="${x.cost || ''}"></label>
+    <label class="f">الموعد المستهدف<input type="date" name="due" value="${esc(x.due || '')}"></label>
+    <label class="f">المسؤول<input name="owner" value="${esc(x.owner || '')}" list="staff-list"><datalist id="staff-list">${D.staff.map(s => `<option value="${esc(s.name)}">`).join('')}</datalist></label>
+    <label class="f" style="grid-column:1/-1">تفاصيل<textarea name="note">${esc(x.note || '')}</textarea></label></div>
+    <div class="modal-actions"><button class="btn primary" value="ok">حفظ</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => !!(await act(id ? 'PUT' : 'POST', id ? `/api/improvements/${id}` : '/api/improvements', data, 'تم الحفظ')));
+}
 
 /* ---------- النوافذ ---------- */
 let modalHandler = null;
