@@ -164,8 +164,8 @@ VIEWS.home = () => {
   const present = act_.filter(s => ['present', 'late'].includes(attOf(s.id, today)?.status)).length;
   const marked = act_.filter(s => attOf(s.id, today)).length;
   const mf = monthFin(m), income = mf.inc, spent = mf.out;
-  const debtors = D.students.map(s => ({ s, b: bal(s) })).filter(x => x.b.remaining > 0).sort((a, b) => b.b.remaining - a.b.remaining);
-  const owed = sumBy(debtors, x => x.b.remaining);
+  const debtors = canFin() ? debtRows() : [];
+  const owed = sumBy(debtors, x => x.fees + x.books);
   const upcoming = D.announcements.filter(a => a.eventDate && a.eventDate >= today).sort((a, b) => a.eventDate.localeCompare(b.eventDate)).slice(0, 4);
   const hour = new Date().getHours();
 
@@ -185,7 +185,7 @@ VIEWS.home = () => {
   <div class="cols">
     <div>
       ${canFin() ? `<section class="panel"><h2>أعلى المتأخرين في السداد ${debtors.length > 5 ? `<button class="btn sm ghost" onclick="UI.finTab='debts';go('finance')">عرض الكل</button>` : ''}</h2>
-        ${debtors.length ? debtors.slice(0, 5).map(({ s, b }) => `<div class="list-row"><div><b>${esc(s.name)}</b><div class="muted">${esc(s.grade || '')}</div></div><div class="actions"><span class="money-bad">${money(b.remaining)}</span>${s.parent_phone ? `<a class="btn sm wa" target="_blank" rel="noopener" href="${reminderLink(s, b)}">تذكير</a>` : ''}</div></div>`).join('') : '<p class="empty">لا توجد مبالغ متأخرة 🎉</p>'}
+        ${debtors.length ? debtors.slice(0, 5).map(({ s, b, fees, books }) => `<div class="list-row"><div><b>${esc(s.name)}</b><div class="muted">${esc(s.grade || '')}${books > 0 ? ` · رسوم ${fmt(fees)} + كتب ${fmt(books)}` : ''}</div></div><div class="actions"><span class="money-bad">${money(fees + books)}</span>${s.parent_phone ? `<a class="btn sm wa" target="_blank" rel="noopener" href="${reminderLink(s, b)}">تذكير</a>` : ''}</div></div>`).join('') : '<p class="empty">لا توجد مبالغ متأخرة 🎉</p>'}
       </section>` : ''}
       ${can('teach') && teachClasses().length && dayIdx(D.today) <= 4 ? `<section class="panel"><h2>التعليم اليوم <button class="btn sm ghost" onclick="UI.teachTab='today';UI.teachDate=D.today;go('teach')">فتح المهام</button></h2>
         ${teachClasses().map(c => { const s = dayStats(c, D.today); return `<div class="list-row"><span>${esc(c)}</span><span class="tag ${s.done === s.total && s.total ? 'ok' : s.done ? 'warn' : 'mute'}">${s.done}/${s.total} مهمة</span></div>`; }).join('')}
@@ -464,12 +464,18 @@ const FIN = {
     </tbody></table></div></section>`;
   },
   debts() {
-    const rows = D.students.map(s => ({ s, b: bal(s) })).filter(x => x.b.remaining > 0).sort((a, b) => b.b.remaining - a.b.remaining);
-    return `<section class="panel"><h2>الطلاب المتأخرون في السداد <span class="money-bad">${money(sumBy(rows, x => x.b.remaining))}</span></h2>
-    <p class="muted" style="margin-top:0">زر التذكير يفتح واتساب برسالة جاهزة فيها المبلغ ورابط المتابعة.</p>
-    <div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الصف</th><th>المستحق</th><th>المدفوع</th><th>المتبقي</th><th></th></tr></thead><tbody>
-    ${rows.map(({ s, b }) => `<tr class="${s.status === 'inactive' ? 'dim' : ''}"><td><b>${esc(s.name)}</b>${s.status === 'inactive' ? ' <span class="tag warn">منقطع</span>' : ''}</td><td>${esc(s.grade || '')}</td><td>${money(b.totalDue)}</td><td>${money(b.paid)}</td><td class="money-bad">${money(b.remaining)}</td>
-      <td class="actions">${s.parent_phone ? `<a class="btn sm wa" target="_blank" rel="noopener" href="${reminderLink(s, b)}">تذكير واتساب</a>` : '<span class="muted">لا يوجد رقم</span>'}<button class="btn sm" onclick="paymentForm('${s.id}')">+ دفعة</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">جميع الحسابات مسددة 🎉</td></tr>'}
+    const rows = debtRows();
+    const tf = sumBy(rows, x => x.fees), tb = sumBy(rows, x => x.books);
+    return `<section class="panel"><h2>الطلاب المتأخرون في السداد <span class="money-bad">${money(tf + tb)}</span> <span class="muted">رسوم ${fmt(tf)} · كتب ${fmt(tb)}</span></h2>
+    <p class="muted" style="margin-top:0">كل طالب: المتأخر من الرسوم الشهرية، والمتأخر من ثمن الكتب، والإجمالي عليه. زر التذكير يفتح واتساب برسالة جاهزة فيها التفصيل ورابط المتابعة.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الصف</th><th>الرسوم المستحقة</th><th>المدفوع</th><th>متأخر رسوم</th><th>متأخر كتب</th><th>الإجمالي عليه</th><th></th></tr></thead><tbody>
+    ${rows.map(({ s, b, fees, books, bookList }) => `<tr class="${s.status === 'inactive' ? 'dim' : ''}"><td><b class="click" onclick="openStudent('${s.id}')">${esc(s.name)}</b>${s.status === 'inactive' ? ' <span class="tag warn">منقطع</span>' : ''}</td><td>${esc(s.grade || '')}</td>
+      <td>${money(b.totalDue)}</td><td>${money(b.paid)}</td>
+      <td class="${fees > 0 ? 'money-bad' : 'muted'}">${fees > 0 ? money(fees) : '—'}</td>
+      <td class="${books > 0 ? 'money-bad' : 'muted'}">${books > 0 ? `${money(books)}<div class="muted" style="font-size:.8em">${bookList.map(x => esc(x.title)).join('، ')}</div>` : '—'}</td>
+      <td><b class="money-bad">${money(fees + books)}</b></td>
+      <td class="actions">${s.parent_phone ? `<a class="btn sm wa" target="_blank" rel="noopener" href="${reminderLink(s, b)}">تذكير واتساب</a>` : '<span class="muted">لا يوجد رقم</span>'}${fees > 0 ? `<button class="btn sm" onclick="paymentForm('${s.id}')">+ دفعة</button>` : ''}${books > 0 ? `<button class="btn sm" onclick="bookPay('${bookList[0].id}')">سداد كتاب</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="empty">جميع الحسابات مسددة 🎉</td></tr>'}
+    ${rows.length > 1 ? `<tr class="grandtotal"><td colspan="4"><b>الإجمالي</b> <span class="muted">${rows.length} طالب</span></td><td class="money-bad"><b>${money(tf)}</b></td><td class="money-bad"><b>${money(tb)}</b></td><td class="money-bad"><b>${money(tf + tb)}</b></td><td></td></tr>` : ''}
     </tbody></table></div></section>`;
   },
   expenses() {
@@ -508,8 +514,17 @@ const FIN = {
       <p class="muted">شراء الكتب يُسجَّل كمصروف في بند "شراء كتب" ويدخل في إجمالي المصروفات.</p></section>`;
   },
 };
+// الكتب غير المسددة لطالب، وقائمة المتأخرين (رسوم + كتب)
+const unpaidBooks = s => D.books.filter(x => x.studentId === s.id && N(x.price) - N(x.paidAmount) > 0.009);
+const booksOwed = s => sumBy(unpaidBooks(s), x => N(x.price) - N(x.paidAmount));
+function debtRows() {
+  return D.students.map(s => { const b = bal(s), bookList = unpaidBooks(s); return { s, b, fees: Math.max(0, b.remaining), books: booksOwed(s), bookList }; })
+    .filter(x => x.fees > 0.009 || x.books > 0.009).sort((a, b) => (b.fees + b.books) - (a.fees + a.books));
+}
 function reminderLink(s, b) {
-  return waLink(s.parent_phone, `السلام عليكم ${s.parent_name ? 'أ. ' + s.parent_name : 'ولي أمر الطالب'}،\nنود تذكيركم بأن المبلغ المتبقي على ${s.name} هو ${fmt(b.remaining)} ${cur()}.\nيمكنكم متابعة التفاصيل من الرابط:\n${portalUrl(s)}\nشاكرين تعاونكم — ${D.settings.schoolName}`);
+  const bk = booksOwed(s), fees = Math.max(0, b.remaining);
+  const detail = bk > 0 ? `${fmt(fees + bk)} ${cur()} (رسوم ${fmt(fees)} + كتب ${fmt(bk)})` : `${fmt(fees)} ${cur()}`;
+  return waLink(s.parent_phone, `السلام عليكم ${s.parent_name ? 'أ. ' + s.parent_name : 'ولي أمر الطالب'}،\nنود تذكيركم بأن المبلغ المتبقي على ${s.name} هو ${detail}.\nيمكنكم متابعة التفاصيل من الرابط:\n${portalUrl(s)}\nشاكرين تعاونكم — ${D.settings.schoolName}`);
 }
 const studentOptions = sel => active().concat(D.students.filter(s => s.status === 'inactive'))
   .map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)} — ${esc(s.grade || '')}${s.status === 'inactive' ? ' (منقطع)' : ''}</option>`).join('');
