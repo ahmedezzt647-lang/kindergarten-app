@@ -128,8 +128,21 @@ document.getElementById('nav').addEventListener('click', e => {
 function go(v) { VIEW = v; location.hash = v; render(); $('#view').focus({ preventScroll: true }); window.scrollTo(0, 0); }
 window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (v && v !== VIEW && VIEWS[v]) { VIEW = v; render(); } });
 
+/* ---------- الصلاحيات ---------- */
+const ME = () => D.me || { admin: true, perms: [] };
+const can = p => ME().admin || (ME().perms || []).includes(p);
+const canFin = () => can('finance') || can('reports');
+const VIEW_PERM = { attendance: 'attendance', students: 'students', teach: 'teach', finance: 'finance', staff: 'staff', comms: 'comms', reports: 'reports', appearance: 'settings' };
+const viewAllowed = v => !VIEW_PERM[v] || can(VIEW_PERM[v]);
+const PERM_LABELS = { attendance: '✅ الحضور', students: '👧 الطلاب (إضافة وتعديل)', teach: '📚 التعليم والدرجات', finance: '💰 المالية (دفعات، مصروفات، كتب)',
+  reports: '📊 التقارير ونصيب الشركاء', staff: '🧑‍🏫 الموظفون والرواتب', comms: '📣 التواصل (إعلانات وملاحظات)', settings: '⚙️ الإعدادات والمظهر', delete: '🗑️ الحذف' };
+
 function render() {
   if (!D) return;
+  if (!viewAllowed(VIEW)) VIEW = 'home';
+  document.querySelectorAll('#nav [data-v]').forEach(b => { b.hidden = !viewAllowed(b.dataset.v); });
+  document.querySelectorAll('#nav .navlink').forEach(a => { a.hidden = !ME().admin; });
+  document.body.classList.toggle('no-delete', !can('delete'));
   document.querySelectorAll('#nav button').forEach(b => b.dataset.v === VIEW ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   $('#brand-name').textContent = D.settings.schoolName || 'روضة نور ومكة';
   $('#brand-date').textContent = hijri(D.today);
@@ -159,29 +172,29 @@ VIEWS.home = () => {
   return `
   ${banner ? `<div class="banner"><img src="/img/banner?v=${banner}" alt=""></div>` : ''}
   <div class="head"><div><h1>${hour < 12 ? 'صباح الخير' : 'مساء الخير'}</h1><p>${dayName(today)} · ${hijri(today)}</p></div>
-    <div class="actions">${installPrompt && !isInstalled() ? '<button class="btn" onclick="installApp()">📲 تثبيت التطبيق</button>' : ''}<button class="btn primary" onclick="studentForm()">+ طالب جديد</button><button class="btn" onclick="paymentForm()">+ تسجيل دفعة</button></div></div>
-
-  <div class="figures">
+    <div class="actions">${installPrompt && !isInstalled() ? '<button class="btn" onclick="installApp()">📲 تثبيت التطبيق</button>' : ''}${can('students') ? '<button class="btn primary" onclick="studentForm()">+ طالب جديد</button>' : ''}${can('finance') ? '<button class="btn" onclick="paymentForm()">+ تسجيل دفعة</button>' : ''}</div></div>
+  ${!ME().admin ? `<p class="muted" style="margin-top:-6px">مرحباً ${esc(ME().name)} 👋</p>` : ''}
+  <div class="figures"${canFin() ? '' : ' style="grid-template-columns:1fr"'}>
     <button class="fig" onclick="go('attendance')"><span>حضور اليوم</span><b class="num">${present} / ${act_.length}</b><small>${marked < act_.length ? `بقي ${act_.length - marked} بدون تسجيل` : 'اكتمل التسجيل'}</small></button>
-    <button class="fig" onclick="UI.finTab='payments';go('finance')"><span>المقبوض هذا الشهر</span><b class="num money-ok">${fmt(income)}</b><small>${mf.books ? `رسوم ${fmt(mf.fees)} · كتب ${fmt(mf.books)}` : cur()}</small></button>
+    ${canFin() ? `<button class="fig" onclick="UI.finTab='payments';go('finance')"><span>المقبوض هذا الشهر</span><b class="num money-ok">${fmt(income)}</b><small>${mf.books ? `رسوم ${fmt(mf.fees)} · كتب ${fmt(mf.books)}` : cur()}</small></button>
     <button class="fig" onclick="UI.finTab='debts';go('finance')"><span>مبالغ متأخرة</span><b class="num money-bad">${fmt(owed)}</b><small>${debtors.length} طالب</small></button>
-    <button class="fig" onclick="go('reports')"><span>صافي الشهر</span><b class="num">${fmt(income - spent)}</b><small>${partners().map(p => `${esc(p.name)}: ${fmt((income - spent) * N(p.share) / 100)}`).join(' · ')}</small></button>
+    <button class="fig" onclick="go('reports')"><span>صافي الشهر</span><b class="num">${fmt(income - spent)}</b><small>${partners().map(p => `${esc(p.name)}: ${fmt((income - spent) * N(p.share) / 100)}`).join(' · ')}</small></button>` : ''}
   </div>
 
   <div class="cols">
-    <section class="panel"><h2>لوحة الحضور اليوم <span class="actions">${marked < act_.length ? `<button class="btn sm" onclick="markAllPresent()">تسجيل الباقين حاضرين</button>` : ''}</span></h2>
+    <section class="panel"><h2>لوحة الحضور اليوم <span class="actions">${marked < act_.length && can('attendance') ? `<button class="btn sm" onclick="markAllPresent()">تسجيل الباقين حاضرين</button>` : ''}</span></h2>
       ${attendanceBoard(today)}
     </section>
     <div>
-      <section class="panel"><h2>أعلى المتأخرين في السداد ${debtors.length > 5 ? `<button class="btn sm ghost" onclick="UI.finTab='debts';go('finance')">عرض الكل</button>` : ''}</h2>
+      ${canFin() ? `<section class="panel"><h2>أعلى المتأخرين في السداد ${debtors.length > 5 ? `<button class="btn sm ghost" onclick="UI.finTab='debts';go('finance')">عرض الكل</button>` : ''}</h2>
         ${debtors.length ? debtors.slice(0, 5).map(({ s, b }) => `<div class="list-row"><div><b>${esc(s.name)}</b><div class="muted">${esc(s.grade || '')}</div></div><div class="actions"><span class="money-bad">${money(b.remaining)}</span>${s.parent_phone ? `<a class="btn sm wa" target="_blank" rel="noopener" href="${reminderLink(s, b)}">تذكير</a>` : ''}</div></div>`).join('') : '<p class="empty">لا توجد مبالغ متأخرة 🎉</p>'}
-      </section>
-      ${teachClasses().length && dayIdx(D.today) <= 4 ? `<section class="panel"><h2>التعليم اليوم <button class="btn sm ghost" onclick="UI.teachTab='today';UI.teachDate=D.today;go('teach')">فتح المهام</button></h2>
+      </section>` : ''}
+      ${can('teach') && teachClasses().length && dayIdx(D.today) <= 4 ? `<section class="panel"><h2>التعليم اليوم <button class="btn sm ghost" onclick="UI.teachTab='today';UI.teachDate=D.today;go('teach')">فتح المهام</button></h2>
         ${teachClasses().map(c => { const s = dayStats(c, D.today); return `<div class="list-row"><span>${esc(c)}</span><span class="tag ${s.done === s.total && s.total ? 'ok' : s.done ? 'warn' : 'mute'}">${s.done}/${s.total} مهمة</span></div>`; }).join('')}
         ${dayIdx(D.today) === 4 ? `<div class="note-box" style="margin-top:8px">🎉 اليوم خميس: فعالية ترفيهية تعليمية جاهزة لكل صف في صفحة التعليم.</div>` : ''}</section>` : ''}
-      <section class="panel"><h2>الدخل والمصروف — آخر 6 أشهر</h2>${chart6()}
-        <div class="board-legend" style="margin-top:10px"><span><i style="background:var(--palm)"></i>مقبوضات</span><span><i style="background:var(--rose)"></i>مصروفات</span></div></section>
-      <section class="panel"><h2>فعاليات قادمة <button class="btn sm ghost" onclick="annForm()">+ فعالية</button></h2>
+      ${canFin() ? `<section class="panel"><h2>الدخل والمصروف — آخر 6 أشهر</h2>${chart6()}
+        <div class="board-legend" style="margin-top:10px"><span><i style="background:var(--palm)"></i>مقبوضات</span><span><i style="background:var(--rose)"></i>مصروفات</span></div></section>` : ''}
+      <section class="panel"><h2>فعاليات قادمة ${can('comms') ? '<button class="btn sm ghost" onclick="annForm()">+ فعالية</button>' : ''}</h2>
         ${upcoming.length ? upcoming.map(a => `<div class="list-row"><b>${esc(a.title)}</b><span class="tag info">${esc(a.eventDate)}</span></div>`).join('') : '<p class="empty">لا توجد فعاليات قادمة</p>'}
       </section>
     </div>
@@ -207,6 +220,7 @@ function attendanceBoard(date, cls) {
 }
 const CYCLE = ['', 'present', 'absent', 'late', 'excused'];
 async function cycleAtt(id, date) {
+  if (!can('attendance')) return toast('ليس لديك صلاحية تسجيل الحضور', true);
   const cur_ = attOf(id, date)?.status || '';
   const next = CYCLE[(CYCLE.indexOf(cur_) + 1) % CYCLE.length];
   // تحديث فوري في الواجهة ثم الحفظ
@@ -289,13 +303,13 @@ VIEWS.students = () => {
     .sort((a, b) => String(a.join_date || '9999').localeCompare(String(b.join_date || '9999')) || String(a.name).localeCompare(String(b.name), 'ar'));
   return `
   <div class="head"><div><h1>الطلاب</h1><p>${active().length} مستمر · ${D.students.length - active().length} منقطع</p></div>
-    <div class="actions"><button class="btn" onclick="exportStudents()">تصدير Excel</button><button class="btn primary" onclick="studentForm()">+ طالب جديد</button></div></div>
+    <div class="actions">${canFin() ? '<button class="btn" onclick="exportStudents()">تصدير Excel</button>' : ''}${can('students') ? '<button class="btn primary" onclick="studentForm()">+ طالب جديد</button>' : ''}</div></div>
   <div class="filters">
     <input type="search" placeholder="ابحث بالاسم أو اسم ولي الأمر أو الجوال" value="${esc(UI.stQ)}" oninput="UI.stQ=this.value;clearTimeout(window._q);window._q=setTimeout(()=>{render();const i=document.querySelector('.filters input');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)" aria-label="بحث">
     <select onchange="UI.stClass=this.value;render()" aria-label="الصف"><option value="">كل الصفوف</option>${classes().map(c => `<option ${c === UI.stClass ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
     <select onchange="UI.stStatus=this.value;render()" aria-label="الحالة">${[['active', 'المستمرون'], ['inactive', 'المنقطعون'], ['all', 'الكل']].map(([v, l]) => `<option value="${v}" ${v === UI.stStatus ? 'selected' : ''}>${l}</option>`).join('')}</select>
   </div>
-  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>الصف</th><th>تاريخ الالتحاق</th><th>ولي الأمر</th><th>الرسم الشهري</th><th>المستحق</th><th>المدفوع</th><th>المتبقي</th><th>اليوم</th></tr></thead><tbody>
+  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>الصف</th><th>تاريخ الالتحاق</th><th>ولي الأمر</th>${canFin() ? '<th>الرسم الشهري</th><th>المستحق</th><th>المدفوع</th><th>المتبقي</th>' : ''}<th>اليوم</th></tr></thead><tbody>
   ${studentRows(list)}
   </tbody></table></div></section>`;
 };
@@ -312,11 +326,11 @@ function studentRows(list) {
     return `<tr class="click ${s.status === 'inactive' ? 'dim' : ''}" onclick="openStudent('${s.id}')" tabindex="0" onkeydown="if(event.key==='Enter')openStudent('${s.id}')">
       <td><b>${esc(s.name)}</b>${s.status === 'inactive' ? ' <span class="tag warn">منقطع</span>' : ''}</td>
       <td>${esc(s.grade || '—')}</td><td class="num" style="white-space:nowrap">${esc(fmtDate(s.join_date))}</td><td>${esc(s.parent_name || '')}<div class="muted num">${esc(s.parent_phone || '')}</div></td>
-      <td>${money(N(s.monthlyFee) - N(s.discount))}${N(s.discount) ? `<div class="muted">خصم ${fmt(s.discount)}</div>` : ''}</td>
+      ${canFin() ? `<td>${money(N(s.monthlyFee) - N(s.discount))}${N(s.discount) ? `<div class="muted">خصم ${fmt(s.discount)}</div>` : ''}</td>
       <td>${money(b.totalDue)}</td><td class="money-ok">${money(b.paid)}</td>
-      <td class="${b.remaining > 0 ? 'money-bad' : 'money-ok'}">${money(b.remaining)}</td>
+      <td class="${b.remaining > 0 ? 'money-bad' : 'money-ok'}">${money(b.remaining)}</td>` : ''}
       <td>${s.status === 'inactive' ? '—' : a ? `<span class="tag ${STATUS_TAG[a.status]}">${STATUS[a.status]}</span>` : '<span class="tag mute">—</span>'}</td></tr>`; };
-  const sumRow = (label, t, cls) => `<tr class="${cls}"><td colspan="4"><b>${label}</b> <span class="muted">${t.n} طالب</span></td>
+  const sumRow = (label, t, cls) => !canFin() ? `<tr class="${cls}"><td colspan="5"><b>${label}</b> <span class="muted">${t.n} طالب</span></td></tr>` : `<tr class="${cls}"><td colspan="4"><b>${label}</b> <span class="muted">${t.n} طالب</span></td>
     <td><b>${money(t.fee)}</b></td><td><b>${money(t.due)}</b></td><td class="money-ok"><b>${money(t.paid)}</b></td>
     <td class="${t.rem > 0.009 ? 'money-bad' : 'money-ok'}"><b>${money(t.rem)}</b></td><td></td></tr>`;
   let html = '';
@@ -344,18 +358,18 @@ function openStudent(id) {
       <div class="muted">${esc(s.grade || 'بدون صف')} · ملتحق ${esc(s.join_date || '—')}</div>
       ${s.status === 'inactive' ? `<span class="tag warn">منقطع منذ ${esc(s.inactive_date || '')}</span>` : '<span class="tag ok">مستمر</span>'}</div></div>
 
-    <div class="figures" style="grid-template-columns:repeat(3,1fr)">
+    ${canFin() ? `<div class="figures" style="grid-template-columns:repeat(3,1fr)">
       <div class="fig"><span>المستحق</span><b>${fmt(b.totalDue)}</b><small>${esc(b.desc)}${b.booksTotal ? ` + كتب ${fmt(b.booksTotal)}` : ''}${b.oneTime ? ` − خصم ${fmt(b.oneTime)}${s.oneTimeDiscountNote ? ' (' + esc(s.oneTimeDiscountNote) + ')' : ''}` : ''}</small></div>
       <div class="fig"><span>المدفوع</span><b class="money-ok">${fmt(b.paid)}</b><small>${pays.length} دفعة</small></div>
       <div class="fig"><span>المتبقي</span><b class="${b.remaining > 0 ? 'money-bad' : 'money-ok'}">${fmt(b.remaining)}</b><small>${rate !== null ? `حضور ${rate}٪` : ''}</small></div>
-    </div>
+    </div>` : rate !== null ? `<p class="muted">نسبة الحضور: ${rate}٪</p>` : ''}
 
     <div class="actions" style="margin-bottom:16px">
-      <button type="button" class="btn primary" onclick="paymentForm('${id}')">+ دفعة</button>
-      <button type="button" class="btn" onclick="bookForm('${id}')">+ بيع كتاب</button>
-      <button type="button" class="btn" onclick="noteForm('${id}')">+ ملاحظة يومية</button>
-      <button type="button" class="btn" onclick="studentForm('${id}')">تعديل البيانات</button>
-      <button type="button" class="btn" onclick="statement('${id}')">كشف حساب</button>
+      ${can('finance') ? `<button type="button" class="btn primary" onclick="paymentForm('${id}')">+ دفعة</button>
+      <button type="button" class="btn" onclick="bookForm('${id}')">+ بيع كتاب</button>` : ''}
+      ${can('comms') ? `<button type="button" class="btn" onclick="noteForm('${id}')">+ ملاحظة يومية</button>` : ''}
+      ${can('students') ? `<button type="button" class="btn" onclick="studentForm('${id}')">تعديل البيانات</button>` : ''}
+      ${canFin() ? `<button type="button" class="btn" onclick="statement('${id}')">كشف حساب</button>` : ''}
     </div>
 
     <fieldset><legend>بوابة ولي الأمر</legend>
@@ -372,8 +386,8 @@ function openStudent(id) {
       <dt>الجوال</dt><dd>${s.parent_phone ? `<a href="tel:${esc(s.parent_phone)}">${esc(s.parent_phone)}</a>` : '—'}</dd>
       ${s.notes ? `<dt>ملاحظات</dt><dd>${esc(s.notes)}</dd>` : ''}</dl></fieldset>
 
-    <fieldset><legend>الدفعات</legend>
-      ${pays.length ? pays.map(p => `<div class="list-row"><div>إيصال <b class="num">${p.receiptNo}</b> <span class="muted">· ${esc(p.date)} · ${esc(p.method)}</span></div><div class="actions"><b>${money(p.amount)}</b><button type="button" class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button></div></div>`).join('') : '<p class="muted">لا توجد دفعات</p>'}</fieldset>
+    ${canFin() ? `<fieldset><legend>الدفعات</legend>
+      ${pays.length ? pays.map(p => `<div class="list-row"><div>إيصال <b class="num">${p.receiptNo}</b> <span class="muted">· ${esc(p.date)} · ${esc(p.method)}</span></div><div class="actions"><b>${money(p.amount)}</b><button type="button" class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button></div></div>`).join('') : '<p class="muted">لا توجد دفعات</p>'}</fieldset>` : ''}
     ${books.length ? `<fieldset><legend>الكتب (منفصلة عن الرسوم)</legend>${books.map(x => `<div class="list-row"><span>${esc(x.title)} <span class="muted">${esc(fmtDate(x.date))}</span> ${x.paid ? '<span class="tag ok">سدّد</span>' : N(x.paidAmount) ? `<span class="tag warn">باقي ${fmt(N(x.price) - N(x.paidAmount))}</span>` : '<span class="tag bad">لم يسدّد</span>'}</span>
       <span class="actions"><b>${money(x.price)}</b>${x.paid ? '' : `<button type="button" class="btn sm primary" onclick="bookPay('${x.id}')">سداد</button>`}</span></div>`).join('')}</fieldset>` : ''}
     ${(() => { const gs = D.assessments.filter(g => g.studentId === id).sort((a, b) => b.week - a.week).slice(0, 12);
@@ -382,7 +396,7 @@ function openStudent(id) {
 
     <div class="modal-actions">
       <button class="btn" value="cancel">إغلاق</button>
-      ${s.status === 'inactive' ? `<button type="button" class="btn" onclick="setStatus('${id}','active')">إعادة تفعيل</button>` : `<button type="button" class="btn" onclick="setStatus('${id}','inactive')">لم يعد يأتي</button>`}
+      ${!can('students') ? '' : s.status === 'inactive' ? `<button type="button" class="btn" onclick="setStatus('${id}','active')">إعادة تفعيل</button>` : `<button type="button" class="btn" onclick="setStatus('${id}','inactive')">لم يعد يأتي</button>`}
       <button type="button" class="btn danger" onclick="deleteStudent('${id}')">حذف نهائي</button>
     </div>`);
 }
@@ -400,7 +414,7 @@ function studentForm(id) {
       <label class="f">اسم ولي الأمر<input name="parent_name" value="${v('parent_name')}"></label>
       <label class="f">الجوال (واتساب)<input name="parent_phone" inputmode="tel" value="${v('parent_phone')}" placeholder="05xxxxxxxx"></label>
     </div></fieldset>
-    <fieldset><legend>الرسوم</legend><div class="grid g3">
+    ${!can('finance') ? `<input type="hidden" name="join_date" value="${v('join_date') || D.today}">` : `<fieldset><legend>الرسوم</legend><div class="grid g3">
       <label class="f">تاريخ الالتحاق<input type="date" name="join_date" value="${v('join_date') || D.today}"></label>
       <label class="f">الرسم الشهري *<input type="number" min="0" name="monthlyFee" required value="${v('monthlyFee')}"></label>
       <label class="f">خصم شهري<input type="number" min="0" name="discount" value="${v('discount') || 0}"></label>
@@ -408,7 +422,7 @@ function studentForm(id) {
       <label class="f">سبب الخصم<input name="oneTimeDiscountNote" value="${v('oneTimeDiscountNote')}" placeholder="مثال: تسوية أيام سبتمبر"></label>
       ${id ? '' : `<label class="f">الدفعة الأولى<input type="number" min="0" name="firstPayment" value="0"></label>
       <label class="f">طريقة الدفع<select name="method">${['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'].map(m => `<option>${m}</option>`).join('')}</select></label>`}
-    </div><p class="muted">الالتحاق حتى يوم ${D.settings.halfMonthAfterDay || 10} من الشهر يُحسب شهراً كاملاً، وبعده يُحسب بالأيام (الرسم ÷ 30 × الأيام المتبقية من الشهر).</p></fieldset>
+    </div><p class="muted">الالتحاق حتى يوم ${D.settings.halfMonthAfterDay || 10} من الشهر يُحسب شهراً كاملاً، وبعده يُحسب بالأيام (الرسم ÷ 30 × الأيام المتبقية من الشهر).</p></fieldset>`}
     <label class="f">ملاحظات<textarea name="notes">${v('notes')}</textarea></label>
     <div class="modal-actions"><button class="btn primary" value="ok">${id ? 'حفظ التعديلات' : 'تسجيل الطالب'}</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
     async data => {
@@ -1196,8 +1210,15 @@ async function removeImage(key) {
 /* ---------- الإعدادات ---------- */
 VIEWS.settings = () => {
   const s = D.settings;
-  return `<div class="head"><div><h1>الإعدادات</h1></div><div class="actions"><button class="btn danger" onclick="logout()">تسجيل الخروج</button></div></div>
-  ${installPanel()}
+  const head = `<div class="head"><div><h1>${can('settings') ? 'الإعدادات' : 'حسابي'}</h1><p>مسجّل الدخول باسم: <b>${esc(ME().name)}</b>${ME().admin ? ' (المدير)' : ''}</p></div><div class="actions"><button class="btn danger logout" onclick="logout()">تسجيل الخروج</button></div></div>
+  ${installPanel()}`;
+  const myPw = `<form class="panel" onsubmit="changePassword(event)"><h2>تغيير كلمة المرور</h2><div class="grid g3">
+    <label class="f">الحالية<input type="password" name="current" required autocomplete="current-password"></label>
+    <label class="f">الجديدة<input type="password" name="next" required minlength="6" autocomplete="new-password"></label>
+    <label class="f">تأكيد الجديدة<input type="password" name="confirm" required minlength="6" autocomplete="new-password"></label>
+  </div><div class="actions" style="margin-top:14px"><button class="btn primary">تغيير كلمة المرور</button></div></form>`;
+  if (!can('settings')) return head + `<section class="panel"><h2>صلاحياتك</h2><div class="opts">${(ME().perms || []).map(p => `<span class="tag info">${PERM_LABELS[p] || p}</span>`).join(' ') || '<span class="muted">عرض فقط</span>'}</div><p class="muted">لتعديل صلاحياتك تواصل مع المدير.</p></section>` + myPw;
+  return head + `${ME().admin ? usersPanel() : ''}
   <form class="panel" onsubmit="saveSettings(event)"><h2>بيانات الروضة</h2><div class="grid g2">
     <label class="f">اسم الروضة<input name="schoolName" value="${esc(s.schoolName)}"></label>
     <label class="f">جوال الروضة (واتساب)<input name="phone" value="${esc(s.phone || '')}"></label>
@@ -1208,22 +1229,62 @@ VIEWS.settings = () => {
     <label class="f" style="grid-column:1/-1">بنود المصروفات (افصل بفاصلة)<input name="expenseCategories" value="${esc((s.expenseCategories || []).join('، '))}"></label>
   </div><div class="actions" style="margin-top:14px"><button class="btn primary">حفظ</button></div></form>
 
-  <form class="panel" onsubmit="savePartners(event)"><h2>الشركاء ونسبة كل شريك</h2>
+  ${!ME().admin ? '' : `<form class="panel" onsubmit="savePartners(event)"><h2>الشركاء ونسبة كل شريك</h2>
     <div class="grid g2">${partners().map((p, i) => `<label class="f">اسم الشريك ${i + 1}<input name="n${i}" value="${esc(p.name)}" required></label><label class="f">النسبة ٪<input type="number" min="0" max="100" step="any" name="s${i}" value="${p.share}" required></label>`).join('')}</div>
-    <div class="actions" style="margin-top:14px"><button class="btn primary">حفظ</button></div></form>
+    <div class="actions" style="margin-top:14px"><button class="btn primary">حفظ</button></div></form>`}
 
   <section class="panel"><h2>الصفوف <button class="btn sm primary" onclick="classForm()">+ صف</button></h2>
     ${(s.classes || []).map((c, i) => { const n = active().filter(x => x.grade === c.name).length;
       return `<div class="list-row"><div><b>${esc(c.name)}</b> <span class="muted">${n} طالب${c.capacity ? ` من ${c.capacity}` : ''}${c.teacher ? ` · المعلمة: ${esc(c.teacher)}` : ''}</span></div>
       <div class="actions"><button class="btn sm" onclick="classForm(${i})">تعديل</button><button class="btn sm danger" onclick="removeClass(${i})">حذف</button></div></div>`; }).join('') || '<p class="empty">لم تضف صفوفاً بعد</p>'}
   </section>
-
-  <form class="panel" onsubmit="changePassword(event)"><h2>تغيير كلمة المرور</h2><div class="grid g3">
-    <label class="f">الحالية<input type="password" name="current" required autocomplete="current-password"></label>
-    <label class="f">الجديدة<input type="password" name="next" required minlength="6" autocomplete="new-password"></label>
-    <label class="f">تأكيد الجديدة<input type="password" name="confirm" required minlength="6" autocomplete="new-password"></label>
-  </div><div class="actions" style="margin-top:14px"><button class="btn primary">تغيير كلمة المرور</button></div></form>`;
+  ${myPw}`;
 };
+/* ---------- المستخدمون والصلاحيات (للمدير) ---------- */
+let USERS = null;
+async function loadUsers() { USERS = await api('GET', '/api/users') || []; if (VIEW === 'settings') render(); }
+function usersPanel() {
+  if (USERS === null) { loadUsers(); return '<section class="panel"><h2>المستخدمون والصلاحيات</h2><p class="muted">جارٍ التحميل…</p></section>'; }
+  return `<section class="panel"><h2>المستخدمون والصلاحيات <button class="btn sm primary" onclick="userForm()">+ مستخدم</button></h2>
+    <p class="muted" style="margin-top:0">أنت المدير ولك كل الصلاحيات. أضف حساباً لكل معلمة أو موظف، واختر ما يستطيع رؤيته وفعله. الحذف لا يظهر إلا لمن أعطيته صلاحية "الحذف".</p>
+    ${USERS.length ? USERS.map(u => `<div class="list-row"><div><b>${esc(u.name)}</b> <span class="muted num">@${esc(u.username)}</span>${u.active ? '' : ' <span class="tag warn">موقوف</span>'}
+      <div class="opts" style="margin-top:4px">${(u.perms || []).map(p => `<span class="tag ${p === 'delete' ? 'bad' : 'info'}">${PERM_LABELS[p] || p}</span>`).join(' ') || '<span class="tag mute">عرض فقط</span>'}</div></div>
+      <div class="actions"><button class="btn sm" onclick="userForm('${u.id}')">تعديل</button><button class="btn sm danger" onclick="delUser('${u.id}')">حذف</button></div></div>`).join('')
+      : '<p class="empty">لا يوجد مستخدمون غيرك بعد</p>'}
+    <p class="muted">يدخل المستخدم من صفحة الدخول باسم المستخدم وكلمة المرور. أنت تدخل بكلمة المرور فقط (اترك اسم المستخدم فارغاً).</p></section>`;
+}
+const PRESETS = { teacher: ['attendance', 'teach', 'comms'], accountant: ['finance', 'reports', 'students'], all: PERMS_ALL() };
+function PERMS_ALL() { return Object.keys(PERM_LABELS); }
+function userForm(id) {
+  const u = id ? USERS.find(x => x.id === id) : { perms: ['attendance', 'teach'], active: true };
+  modal(`<h2>${id ? 'تعديل ' + esc(u.name) : 'مستخدم جديد'}</h2><div class="grid g2">
+    <label class="f">الاسم *<input name="name" required value="${esc(u.name || '')}" placeholder="مثال: أ. سارة"></label>
+    <label class="f">اسم المستخدم (للدخول) *<input name="username" required ${id ? 'disabled' : ''} value="${esc(u.username || '')}" placeholder="مثال: sara" autocapitalize="off" autocomplete="off"></label>
+    <label class="f">${id ? 'كلمة مرور جديدة (اتركها فارغة بدون تغيير)' : 'كلمة المرور *'}<input name="password" type="text" ${id ? '' : 'required'} minlength="6" autocomplete="new-password"></label>
+    <label class="f">الحالة<select name="active"><option value="1" ${u.active ? 'selected' : ''}>فعّال</option><option value="0" ${u.active ? '' : 'selected'}>موقوف (لا يستطيع الدخول)</option></select></label></div>
+    <fieldset style="margin-top:12px"><legend>الصلاحيات</legend>
+      <div class="actions" style="margin-bottom:8px"><button type="button" class="btn sm" onclick="presetPerms('teacher')">معلمة</button><button type="button" class="btn sm" onclick="presetPerms('accountant')">محاسب</button><button type="button" class="btn sm" onclick="presetPerms('all')">كل الصلاحيات</button><button type="button" class="btn sm ghost" onclick="presetPerms('none')">إلغاء الكل</button></div>
+      <div class="perm-grid">${PERMS_ALL().map(p => `<label class="opt perm"><input type="checkbox" name="p_${p}" ${(u.perms || []).includes(p) ? 'checked' : ''}><span>${PERM_LABELS[p]}</span></label>`).join('')}</div>
+      <p class="muted" style="margin-bottom:0">بدون صلاحية "المالية" أو "التقارير" لا يرى المستخدم أي مبالغ. نسب الشركاء وإدارة المستخدمين والنسخة الاحتياطية للمدير فقط.</p></fieldset>
+    <div class="modal-actions"><button class="btn primary" value="ok">حفظ</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => {
+      const body = { name: data.name, perms: PERMS_ALL().filter(p => data['p_' + p] === 'on'), active: data.active === '1' };
+      if (data.password) body.password = data.password;
+      if (!id) body.username = data.username;
+      const r = await api(id ? 'PUT' : 'POST', id ? `/api/users/${id}` : '/api/users', body);
+      if (r) { toast(id ? 'تم حفظ المستخدم' : `تم إنشاء المستخدم. اسم الدخول: ${r.username}`); await loadUsers(); }
+      return !!r;
+    });
+}
+function presetPerms(k) {
+  const set = k === 'none' ? [] : PRESETS[k];
+  PERMS_ALL().forEach(p => { const i = document.querySelector(`#modal-form [name=p_${p}]`); if (i) i.checked = set.includes(p); });
+}
+async function delUser(id) {
+  const u = USERS.find(x => x.id === id);
+  if (!confirm(`حذف حساب ${u.name}؟ لن يستطيع الدخول بعد الآن.`)) return;
+  if (await api('DELETE', `/api/users/${id}`)) { toast('تم حذف المستخدم'); await loadUsers(); }
+}
 async function savePartners(e) {
   e.preventDefault();
   const d = Object.fromEntries(new FormData(e.target));
@@ -1271,7 +1332,7 @@ async function changePassword(e) {
   e.preventDefault();
   const d = Object.fromEntries(new FormData(e.target));
   if (d.next !== d.confirm) return toast('كلمتا المرور الجديدتان غير متطابقتين', true);
-  if (await api('PUT', '/api/settings/password', d)) { toast('تم تغيير كلمة المرور'); e.target.reset(); }
+  if (await api('PUT', ME().admin ? '/api/settings/password' : '/api/me/password', d)) { toast('تم تغيير كلمة المرور'); e.target.reset(); }
 }
 async function logout() { await api('POST', '/api/logout'); location.href = '/login'; }
 

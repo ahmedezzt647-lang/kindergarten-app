@@ -28,8 +28,9 @@
   <form class="box" id="f">
     <div class="crest" aria-hidden="true">ن</div>
     <h1>روضة نور ومكة</h1>
-    <p>أدخل كلمة المرور لفتح لوحة الإدارة</p>
-    <label class="f">كلمة المرور<input type="password" id="pw" autocomplete="current-password" required autofocus></label>
+    <p>المدير: كلمة المرور فقط. المعلمات والموظفون: اسم المستخدم وكلمة المرور.</p>
+    <label class="f">اسم المستخدم <span style="color:var(--ink-2);font-weight:400">(اتركه فارغاً للمدير)</span><input id="un" autocomplete="username" autocapitalize="off" spellcheck="false"></label>
+    <label class="f" style="margin-top:10px">كلمة المرور<input type="password" id="pw" autocomplete="current-password" required></label>
     <button class="btn primary" type="submit">دخول</button>
     <div class="err" id="err" role="alert"></div>
   </form>
@@ -38,7 +39,7 @@ document.getElementById('f').addEventListener('submit', async e => {
   e.preventDefault();
   const err = document.getElementById('err'); err.textContent = '';
   try {
-    const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: document.getElementById('pw').value }) });
+    const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: document.getElementById('un').value, password: document.getElementById('pw').value }) });
     const d = await r.json();
     if (r.ok) location.href = '/'; else err.textContent = d.error || 'تعذر الدخول';
   } catch { err.textContent = 'لا يوجد اتصال بالخادم، حاول مرة أخرى'; }

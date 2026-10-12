@@ -187,3 +187,10 @@ dialog:has(.lesson){width:min(820px,calc(100vw - 24px))}
 .qa summary{cursor:pointer;font-weight:600}
 .qa p{margin:6px 0 0;color:var(--ok);font-weight:600}
 .note-box{background:var(--sun-2);color:var(--warn-ink);border-radius:var(--r-md);padding:12px 16px;font-weight:600}
+
+/* الصلاحيات: إخفاء أزرار الحذف لمن لا يملك صلاحية الحذف */
+body.no-delete .btn.danger:not(.logout),body.no-delete [onclick^="del("],body.no-delete [onclick^="deleteStudent("],body.no-delete [onclick^="removeClass("]{display:none!important}
+#nav [hidden]{display:none!important}
+.perm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.perm{display:flex;gap:8px;align-items:center;border:1px solid var(--line,#dfe5e3);border-radius:10px;padding:8px 10px;cursor:pointer}
+.perm input{width:auto;margin:0}

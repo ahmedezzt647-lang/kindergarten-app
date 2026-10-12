@@ -49,6 +49,12 @@ const Assessment = mongoose.model('Assessment', new S({ studentId: { type: Strin
   score: Number, max: { type: Number, default: 10 }, level: String, note: String, date: String }, opt));
 const PlanEdit = mongoose.model('PlanEdit', new S({ track: String, subject: String, week: Number, topic: String }, opt));
 
+// ====== المستخدمون والصلاحيات ======
+// المدير يدخل بكلمة المرور الرئيسية (ADMIN_PASSWORD) وله كل الصلاحيات. بقية الأفراد حسابات يضيفها المدير بصلاحيات محددة.
+const PERMS = ['attendance', 'students', 'teach', 'finance', 'reports', 'staff', 'comms', 'settings', 'delete'];
+const User = mongoose.model('User', new S({ id: { type: String, unique: true }, name: String, username: { type: String, unique: true },
+  passwordHash: String, perms: [String], active: { type: Boolean, default: true } }, opt));
+
 // صور الموقع (الشعار، صورة الرئيسية، خلفية الدخول) — تُخزَّن في القاعدة حتى لا تضيع مع إعادة النشر
 const IMAGE_KEYS = ['logo', 'banner', 'loginBg'];
 const Asset = mongoose.model('Asset', new S({ key: { type: String, unique: true }, mime: String, data: Buffer }, opt));
@@ -134,19 +140,20 @@ async function nextReceiptNo() {
 
 // جلسة موقّعة في كوكي (بدون مكتبات إضافية)
 function sign(v) { return crypto.createHmac('sha256', SESSION_SECRET).update(v).digest('base64url'); }
-function makeSession() {
+function makeSession(uid = 'admin') {
   const exp = Date.now() + 30 * 24 * 3600 * 1000;
-  const v = `admin.${exp}`;
+  const v = `${uid}.${exp}`;
   return `${v}.${sign(v)}`;
 }
+// يعيد هوية صاحب الجلسة ('admin' أو 'u-<id>') أو null
 function validSession(cookie) {
-  if (!cookie) return false;
+  if (!cookie) return null;
   const parts = cookie.split('.');
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return null;
   const v = `${parts[0]}.${parts[1]}`;
   const good = sign(v);
-  if (good.length !== parts[2].length || !crypto.timingSafeEqual(Buffer.from(good), Buffer.from(parts[2]))) return false;
-  return Number(parts[1]) > Date.now();
+  if (good.length !== parts[2].length || !crypto.timingSafeEqual(Buffer.from(good), Buffer.from(parts[2]))) return null;
+  return Number(parts[1]) > Date.now() ? parts[0] : null;
 }
 function readCookie(req, name) {
   const c = req.headers.cookie || '';
@@ -154,10 +161,33 @@ function readCookie(req, name) {
   return m ? decodeURIComponent(m.slice(name.length + 1)) : null;
 }
 const isSecure = req => req.headers['x-forwarded-proto'] === 'https';
-function requireAuth(req, res, next) {
-  if (validSession(readCookie(req, 'sid'))) return next();
+async function requireAuth(req, res, next) {
+  const uid = validSession(readCookie(req, 'sid'));
+  try {
+    if (uid === 'admin') { req.user = { admin: true, name: 'المدير', perms: PERMS }; return next(); }
+    if (uid && uid.startsWith('u-')) {
+      const u = await User.findOne({ id: uid.slice(2), active: true });
+      if (u) { req.user = { admin: false, id: u.id, name: u.name, username: u.username, perms: u.perms || [] }; return next(); }
+    }
+  } catch (e) { return next(e); }
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'يجب تسجيل الدخول' });
   return res.redirect('/login');
+}
+const can = (req, p) => req.user && (req.user.admin || req.user.perms.includes(p));
+// الصلاحية المطلوبة لكل مسار. الحذف (DELETE) يحتاج صلاحية "الحذف" بالإضافة لصلاحية القسم.
+const RULES = [
+  [/^\/(updates|api\/dev|api\/users|api\/backup|api\/settings\/password)/, 'admin'],
+  [/^\/api\/students/, 'students'], [/^\/api\/(payments|expenses|books)/, 'finance'], [/^\/api\/attendance/, 'attendance'],
+  [/^\/api\/staff/, 'staff'], [/^\/api\/(notes|announcements)/, 'comms'],
+  [/^\/api\/(teach|assessments|plan|academic)/, 'teach'], [/^\/api\/(settings|appearance|assets)/, 'settings'],
+];
+function permGuard(req, res, next) {
+  if (req.user.admin) return next();
+  const rule = RULES.find(([re]) => re.test(req.path));
+  const deny = msg => req.path.startsWith('/api/') ? res.status(403).json({ error: msg }) : res.redirect('/');
+  if (rule && (rule[1] === 'admin' || !can(req, rule[1]))) return deny('ليس لديك صلاحية لهذا القسم. اطلبها من المدير');
+  if (req.method === 'DELETE' && !req.path.startsWith('/api/assets') && !can(req, 'delete')) return deny('ليس لديك صلاحية الحذف. اطلبها من المدير');
+  next();
 }
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -226,13 +256,22 @@ app.post('/api/login', wrap(async (req, res) => {
   const ip = req.headers['x-forwarded-for'] || req.ip;
   const a = tooMany(ip);
   if (a.n >= 10) return res.status(429).json({ error: 'محاولات كثيرة، حاول بعد 15 دقيقة' });
-  const s = await getSettings();
-  if (!checkPassword(String(req.body.password || ''), s.passwordHash)) {
+  const username = String(req.body.username || '').trim().toLowerCase();
+  const pw = String(req.body.password || '');
+  let uid = null;
+  if (!username || ['admin', 'المدير', 'مدير'].includes(username)) {
+    const s = await getSettings();
+    if (checkPassword(pw, s.passwordHash)) uid = 'admin';
+  } else {
+    const u = await User.findOne({ username, active: true });
+    if (u && checkPassword(pw, u.passwordHash)) uid = 'u-' + u.id;
+  }
+  if (!uid) {
     a.n++; attempts.set(ip, a);
-    return res.status(401).json({ error: 'كلمة المرور غير صحيحة' });
+    return res.status(401).json({ error: username ? 'اسم المستخدم أو كلمة المرور غير صحيحة' : 'كلمة المرور غير صحيحة' });
   }
   attempts.delete(ip);
-  res.setHeader('Set-Cookie', `sid=${makeSession()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${isSecure(req) ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `sid=${makeSession(uid)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${isSecure(req) ? '; Secure' : ''}`);
   res.json({ ok: true });
 }));
 app.post('/api/logout', (req, res) => {
@@ -269,7 +308,44 @@ app.get('/api/portal/:token', wrap(async (req, res) => {
 
 // ====== كل ما بعد هذا يحتاج تسجيل دخول ======
 app.use(requireAuth);
+app.use(permGuard);
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'views', 'index.html')));
+
+// ---- المستخدمون (للمدير فقط — محمي في permGuard) ----
+const userOut = u => ({ id: u.id, name: u.name, username: u.username, perms: u.perms, active: u.active, createdAt: u.createdAt });
+const cleanPerms = p => (Array.isArray(p) ? p : []).filter(x => PERMS.includes(x));
+app.get('/api/users', wrap(async (req, res) => res.json((await User.find().sort({ createdAt: 1 })).map(userOut))));
+app.post('/api/users', wrap(async (req, res) => {
+  const name = String(req.body.name || '').trim(), username = String(req.body.username || '').trim().toLowerCase(), pw = String(req.body.password || '');
+  if (!name || !username) return res.status(400).json({ error: 'الاسم واسم المستخدم مطلوبان' });
+  if (!/^[a-z0-9_.\u0600-\u06ff-]{3,30}$/.test(username) || ['admin', 'المدير', 'مدير'].includes(username)) return res.status(400).json({ error: 'اسم المستخدم غير صالح (3 أحرف على الأقل، بدون مسافات)' });
+  if (pw.length < 6) return res.status(400).json({ error: 'كلمة المرور 6 أحرف على الأقل' });
+  if (await User.findOne({ username })) return res.status(400).json({ error: 'اسم المستخدم مستعمل، اختر اسماً آخر' });
+  const u = await User.create({ id: newId(), name, username, passwordHash: hashPassword(pw), perms: cleanPerms(req.body.perms), active: req.body.active !== false });
+  res.json(userOut(u));
+}));
+app.put('/api/users/:id', wrap(async (req, res) => {
+  const u = await User.findOne({ id: req.params.id });
+  if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  if ('name' in req.body) u.name = String(req.body.name).trim() || u.name;
+  if ('perms' in req.body) u.perms = cleanPerms(req.body.perms);
+  if ('active' in req.body) u.active = !!req.body.active;
+  if (req.body.password) {
+    if (String(req.body.password).length < 6) return res.status(400).json({ error: 'كلمة المرور 6 أحرف على الأقل' });
+    u.passwordHash = hashPassword(String(req.body.password));
+  }
+  await u.save(); res.json(userOut(u));
+}));
+app.delete('/api/users/:id', wrap(async (req, res) => { await User.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
+// تغيير كلمة مرور المستخدم لنفسه
+app.put('/api/me/password', wrap(async (req, res) => {
+  if (req.user.admin) return res.status(400).json({ error: 'المدير يغيّر كلمة المرور من الإعدادات' });
+  const u = await User.findOne({ id: req.user.id });
+  if (!checkPassword(String(req.body.current || ''), u.passwordHash)) return res.status(400).json({ error: 'كلمة المرور الحالية غير صحيحة' });
+  if (String(req.body.next || '').length < 6) return res.status(400).json({ error: 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل' });
+  u.passwordHash = hashPassword(String(req.body.next)); await u.save();
+  res.json({ ok: true });
+}));
 
 // تعديل البرنامج من الداخل عبر Claude (صفحة /updates)
 require('./dev')(app, wrap, newId, today);
@@ -287,7 +363,15 @@ app.get('/api/all', wrap(async (req, res) => {
     TeachLog.find({ date: { $gte: since } }), PlanEdit.find(), Assessment.find(),
   ]);
   const settings = s.toObject(); delete settings.passwordHash;
-  res.json({ settings, students, payments, expenses, attendance, books, staff, notes, announcements, teachLogs, planEdits, assessments, today: today() });
+  const me = { admin: req.user.admin, name: req.user.name, username: req.user.username || 'admin', perms: req.user.perms };
+  // من لا يملك صلاحية المالية أو التقارير لا تصله المبالغ
+  const fin = can(req, 'finance') || can(req, 'reports');
+  const MONEY = ['monthlyFee', 'discount', 'oneTimeDiscount', 'oneTimeDiscountNote', 'paid'];
+  const studs = fin ? students : students.map(x => { const o = x.toObject(); MONEY.forEach(k => delete o[k]); return o; });
+  if (!fin) delete settings.partners;
+  res.json({ me, settings, students: studs, payments: fin ? payments : [], expenses: fin ? expenses : [], books: fin ? books : [],
+    attendance, staff: can(req, 'staff') ? staff : staff.map(x => ({ id: x.id, name: x.name, role: x.role })),
+    notes, announcements, teachLogs, planEdits, assessments, today: today() });
 }));
 
 // ---- التعليم ----
@@ -312,6 +396,7 @@ app.post('/api/assessments', wrap(async (req, res) => {
   }
   res.json({ ok: true });
 }));
+app.delete('/api/assessments/:id', wrap(async (req, res) => { if (mongoose.isValidObjectId(req.params.id)) await Assessment.deleteOne({ _id: req.params.id }); res.json({ ok: true }); }));
 app.put('/api/plan/edit', wrap(async (req, res) => {
   const { track, subject } = req.body, week = parseInt(req.body.week);
   if (!track || !subject || !(week >= 1)) return res.status(400).json({ error: 'بيانات ناقصة' });
@@ -368,6 +453,7 @@ app.delete('/api/assets/:key', wrap(async (req, res) => {
 app.put('/api/settings', wrap(async (req, res) => {
   const allowed = ['schoolName', 'phone', 'address', 'vatNumber', 'currency', 'halfMonthAfterDay', 'classes', 'expenseCategories', 'partners'];
   const upd = {}; for (const k of allowed) if (k in req.body) upd[k] = req.body[k];
+  if (!req.user.admin) delete upd.partners; // نسب الشركاء يغيّرها المدير فقط
   await Settings.updateOne({ key: 'main' }, { $set: upd });
   res.json({ ok: true });
 }));
@@ -384,8 +470,10 @@ const studentFields = ['level', 'name', 'grade', 'gender', 'birth_date', 'parent
   'monthlyFee', 'discount', 'oneTimeDiscount', 'oneTimeDiscountNote', 'allergies', 'medical_notes', 'emergency_contact', 'authorized_pickup', 'notes'];
 const pick = (body, fields) => { const o = {}; for (const f of fields) if (f in body) o[f] = typeof body[f] === 'string' ? body[f].trim() : body[f]; return o; };
 
+const MONEY_FIELDS = ['monthlyFee', 'discount', 'oneTimeDiscount', 'oneTimeDiscountNote'];
 app.post('/api/students', wrap(async (req, res) => {
   const data = pick(req.body, studentFields);
+  if (!can(req, 'finance')) { MONEY_FIELDS.forEach(k => delete data[k]); delete req.body.firstPayment; }
   if (!data.name) return res.status(400).json({ error: 'اسم الطالب مطلوب' });
   const st = await Student.create({ ...data, id: newId(), status: 'active', portalToken: token() });
   const first = parseFloat(req.body.firstPayment) || 0;
@@ -395,6 +483,7 @@ app.post('/api/students', wrap(async (req, res) => {
 }));
 app.put('/api/students/:id', wrap(async (req, res) => {
   const data = pick(req.body, studentFields);
+  if (!can(req, 'finance')) MONEY_FIELDS.forEach(k => delete data[k]);
   await Student.updateOne({ id: req.params.id }, { $set: data });
   if (data.name) {
     await Payment.updateMany({ studentId: req.params.id }, { $set: { studentName: data.name } });
