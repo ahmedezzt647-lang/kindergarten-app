@@ -1074,17 +1074,29 @@ function studentsOfTrack(track) {
   return active().filter(s => { const tr = tracksFor(s.grade); if (!tr.includes(track)) return false; return tr.length === 1 || !s.level || s.level === track; })
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ar'));
 }
+// نص درس مع عزل التعابير الرياضية (−4، 3 × 7 = 21، −3 > −8) لتُعرض من اليسار لليمين داخل النص العربي
+const MATH_RUN = /[(|√]*[−-]?\d[\d.,]*[)|⁰¹²³⁴⁵⁶⁷⁸⁹°%]*(?:\s*[<>=≠≈+−×÷–-]\s*[(|√]*[−-]?\d[\d.,]*[)|⁰¹²³⁴⁵⁶⁷⁸⁹°%]*)*/g;
+function mx(v) {
+  const s = String(v ?? '');
+  if (!/[\u0600-\u06FF]/.test(s)) return /[\dA-Za-z]/.test(s) ? `<bdi dir="ltr">${esc(s)}</bdi>` : esc(s);
+  let out = '', i = 0;
+  for (const m of s.matchAll(MATH_RUN)) {
+    if (!/^[(|√]*[−-]|[<>=≠≈+−×÷–-]/.test(m[0])) continue;
+    out += esc(s.slice(i, m.index)) + `<bdi dir="ltr">${esc(m[0])}</bdi>`; i = m.index + m[0].length;
+  }
+  return out + esc(s.slice(i));
+}
 function lessonHtml(track, subject, week, L) {
   const T = Curriculum.TRACKS[track], u = baseUnit(track, subject, week), tp = topicFor(track, subject, week);
   if (!L) return `<h2>${esc(subject)} — ${esc(tp.text)}</h2><p class="muted">${esc(T.name)} · الأسبوع ${week}</p>
     <div class="note-box">لم يُكتب الشرح الكامل لهذا الدرس بعد. استخدم الأنشطة المقترحة في مهمة اليوم، أو اطلب كتابته.</div>`;
-  const list = (title, arr) => arr && arr.length ? `<fieldset><legend>${title}</legend><ul class="lesson-ul">${arr.map(x => `<li>${esc(x)}</li>`).join('')}</ul></fieldset>` : '';
+  const list = (title, arr) => arr && arr.length ? `<fieldset><legend>${title}</legend><ul class="lesson-ul">${arr.map(x => `<li>${mx(x)}</li>`).join('')}</ul></fieldset>` : '';
   return `<h2>${esc(subject)} — ${esc(u)}</h2><p class="muted" style="margin-top:-10px">${esc(T.name)} · الأسبوع ${week}${tp.edited ? ` · الموضوع المعدّل: ${esc(tp.text)}` : ''}</p>
     ${list('🎯 أهداف الدرس', L.goals)}${list('🧰 الأدوات والوسائل', L.materials)}
-    <fieldset><legend>👩‍🏫 الشرح خطوة بخطوة</legend>${(L.steps || []).map(([h, txt], i) => `<div class="step"><b>${i + 1}. ${esc(h)}</b><p>${esc(txt).replace(/\n/g, '<br>')}</p></div>`).join('')}</fieldset>
-    ${L.qa && L.qa.length ? `<fieldset><legend>❓ أسئلة وأجوبة للمناقشة</legend>${L.qa.map(([q, a]) => `<details class="qa"><summary><bdi>${esc(q)}</bdi></summary><p>✅ <bdi>${esc(a)}</bdi></p></details>`).join('')}</fieldset>` : ''}
-    ${L.quiz && L.quiz.length ? `<fieldset><legend>📝 أسئلة التقييم (${L.quiz.length})</legend>${L.quiz.map((x, i) => `<div class="step"><b>${i + 1}. <bdi>${esc(x.q)}</bdi></b>${x.o ? `<div class="muted">${x.o.map(o => `<bdi>${esc(o)}</bdi>`).join(' · ')}</div>` : ''}<div class="money-ok">الإجابة: <bdi>${esc(x.a)}</bdi></div></div>`).join('')}</fieldset>` : ''}
-    ${L.hw ? `<fieldset><legend>🏠 الواجب</legend><p>${esc(L.hw)}</p></fieldset>` : ''}`;
+    <fieldset><legend>👩‍🏫 الشرح خطوة بخطوة</legend>${(L.steps || []).map(([h, txt], i) => `<div class="step"><b>${i + 1}. ${esc(h)}</b><p>${mx(txt).replace(/\n/g, '<br>')}</p></div>`).join('')}</fieldset>
+    ${L.qa && L.qa.length ? `<fieldset><legend>❓ أسئلة وأجوبة للمناقشة</legend>${L.qa.map(([q, a]) => `<details class="qa"><summary><bdi>${mx(q)}</bdi></summary><p>✅ <bdi>${mx(a)}</bdi></p></details>`).join('')}</fieldset>` : ''}
+    ${L.quiz && L.quiz.length ? `<fieldset><legend>📝 أسئلة التقييم (${L.quiz.length})</legend>${L.quiz.map((x, i) => `<div class="step"><b>${i + 1}. <bdi>${mx(x.q)}</bdi></b>${x.o ? `<div class="muted">${x.o.map(o => `<bdi>${mx(o)}</bdi>`).join(' · ')}</div>` : ''}<div class="money-ok">الإجابة: <bdi>${mx(x.a)}</bdi></div></div>`).join('')}</fieldset>` : ''}
+    ${L.hw ? `<fieldset><legend>🏠 الواجب</legend><p>${mx(L.hw)}</p></fieldset>` : ''}`;
 }
 function openLesson(track, subject, week) {
   const L = getLesson(track, subject, baseUnit(track, subject, week));
@@ -1101,15 +1113,15 @@ function openExam(track, subject, week) {
   const T = Curriculum.TRACKS[track], u = baseUnit(track, subject, week), L = getLesson(track, subject, u);
   if (!L || !L.quiz || !L.quiz.length) return toast('لا توجد أسئلة لهذا الدرس بعد', true);
   const per = 2, total = L.quiz.length * per;
-  const qs = L.quiz.map((x, i) => `<div class="q" dir="auto"><b>${i + 1}. ${esc(x.q)}</b> <span class="pts">(${per} درجة)</span>
-    ${x.o ? `<div class="opts">${x.o.map(o => `<span>◯ ${esc(o)}</span>`).join('')}</div>` : '<div class="line"></div><div class="line"></div>'}</div>`).join('');
+  const qs = L.quiz.map((x, i) => `<div class="q" dir="auto"><b>${i + 1}. ${mx(x.q)}</b> <span class="pts">(${per} درجة)</span>
+    ${x.o ? `<div class="opts">${x.o.map(o => `<span>◯ ${mx(o)}</span>`).join('')}</div>` : '<div class="line"></div><div class="line"></div>'}</div>`).join('');
   printDoc(`امتحان الأسبوع ${week} — ${subject}`, `
     <table><tr><th>اسم الطالب</th><td style="width:45%"></td><th>الصف</th><td>${esc(T.name)}</td></tr>
     <tr><th>الدرس</th><td dir="auto">${esc(u)}</td><th>الدرجة</th><td>&nbsp;&nbsp;&nbsp;&nbsp;/ ${total}</td></tr></table>
     ${qs}
     <div style="page-break-before:always"></div>
     <h2>نموذج الإجابة — للمعلم</h2>
-    <table>${L.quiz.map((x, i) => `<tr><th style="width:40px">${i + 1}</th><td dir="auto">${esc(x.q)}</td><td dir="auto"><b>${esc(x.a)}</b></td></tr>`).join('')}</table>
+    <table>${L.quiz.map((x, i) => `<tr><th style="width:40px">${i + 1}</th><td dir="auto">${mx(x.q)}</td><td dir="auto"><b>${mx(x.a)}</b></td></tr>`).join('')}</table>
     <style>.q{margin:16px 0;page-break-inside:avoid}.pts{color:#7D8B99;font-size:13px}.opts{display:flex;flex-wrap:wrap;gap:22px;margin-top:8px}.line{border-bottom:1px dotted #999;height:28px}</style>`);
 }
 async function saveGrades(e, track, subject, week) {
