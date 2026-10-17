@@ -361,7 +361,7 @@ function openStudent(id) {
     ${canFin() ? `<div class="figures" style="grid-template-columns:repeat(3,1fr)">
       <div class="fig"><span>المستحق</span><b>${fmt(b.totalDue)}</b><small>${esc(b.desc)}${b.booksTotal ? ` + كتب ${fmt(b.booksTotal)}` : ''}${b.oneTime ? ` − خصم ${fmt(b.oneTime)}${s.oneTimeDiscountNote ? ' (' + esc(s.oneTimeDiscountNote) + ')' : ''}` : ''}</small></div>
       <div class="fig"><span>المدفوع</span><b class="money-ok">${fmt(b.paid)}</b><small>${pays.length} دفعة</small></div>
-      <div class="fig"><span>المتبقي</span><b class="${b.remaining > 0 ? 'money-bad' : 'money-ok'}">${fmt(b.remaining)}</b><small>${rate !== null ? `حضور ${rate}٪` : ''}</small></div>
+      <div class="fig"><span>المتبقي</span><b class="${b.remaining > 0 ? 'money-bad' : 'money-ok'}">${fmt(b.remaining)}</b><small>${booksOwed(s) ? `+ كتب غير مسدّدة ${fmt(booksOwed(s))}` : ''}${rate !== null ? `${booksOwed(s) ? ' · ' : ''}حضور ${rate}٪` : ''}</small></div>
     </div>` : rate !== null ? `<p class="muted">نسبة الحضور: ${rate}٪</p>` : ''}
 
     <div class="actions" style="margin-bottom:16px">
@@ -387,9 +387,9 @@ function openStudent(id) {
       ${s.notes ? `<dt>ملاحظات</dt><dd>${esc(s.notes)}</dd>` : ''}</dl></fieldset>
 
     ${canFin() ? `<fieldset><legend>الدفعات</legend>
-      ${pays.length ? pays.map(p => `<div class="list-row"><div>إيصال <b class="num">${p.receiptNo}</b> <span class="muted">· ${esc(p.date)} · ${esc(p.method)}</span></div><div class="actions"><b>${money(p.amount)}</b><button type="button" class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button></div></div>`).join('') : '<p class="muted">لا توجد دفعات</p>'}</fieldset>` : ''}
+      ${pays.length ? pays.map(p => `<div class="list-row"><div>إيصال <b class="num">${p.receiptNo}</b> <span class="muted">· ${esc(p.date)} · ${esc(p.method)}</span></div><div class="actions"><b>${money(p.amount)}</b><button type="button" class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button>${can('finance') ? `<button type="button" class="btn sm" onclick="paymentForm(null,'${p.id}')">تعديل</button><button type="button" class="btn sm" onclick="payToBook('${p.id}')">تحويل لكتب</button><button type="button" class="btn sm danger" onclick="del('payments','${p.id}','الإيصال ${p.receiptNo}')">حذف</button>` : ''}</div></div>`).join('') : '<p class="muted">لا توجد دفعات</p>'}</fieldset>` : ''}
     ${books.length ? `<fieldset><legend>الكتب (منفصلة عن الرسوم)</legend>${books.map(x => `<div class="list-row"><span>${esc(x.title)} <span class="muted">${esc(fmtDate(x.date))}</span> ${x.paid ? '<span class="tag ok">سدّد</span>' : N(x.paidAmount) ? `<span class="tag warn">باقي ${fmt(N(x.price) - N(x.paidAmount))}</span>` : '<span class="tag bad">لم يسدّد</span>'}</span>
-      <span class="actions"><b>${money(x.price)}</b>${x.paid ? '' : `<button type="button" class="btn sm primary" onclick="bookPay('${x.id}')">سداد</button>`}</span></div>`).join('')}</fieldset>` : ''}
+      <span class="actions"><b>${money(x.price)}</b>${x.paid ? '' : `<button type="button" class="btn sm primary" onclick="bookPay('${x.id}')">سداد</button>`}${can('finance') ? `<button type="button" class="btn sm" onclick="bookEditForm('${x.id}')">تعديل</button><button type="button" class="btn sm danger" onclick="del('books','${x.id}','هذا الكتاب')">حذف</button>` : ''}</span></div>`).join('')}</fieldset>` : ''}
     ${(() => { const gs = D.assessments.filter(g => g.studentId === id).sort((a, b) => b.week - a.week).slice(0, 12);
       return gs.length ? `<fieldset><legend>آخر التقييمات</legend>${gs.map(g => `<div class="list-row"><span>${esc(g.subject)} <span class="muted">الأسبوع ${g.week}</span>${g.level ? ` <span class="tag info">${esc(g.level)}</span>` : ''}</span><b>${g.score ?? '—'} / ${g.max || 10}</b></div>`).join('')}</fieldset>` : ''; })()}
     ${notes.length ? `<fieldset><legend>آخر الملاحظات</legend>${notes.map(n => `<div class="list-row"><span><span class="tag mute">${esc(n.type)}</span> ${esc(n.text)}</span><span class="muted">${esc(n.date)}</span></div>`).join('')}</fieldset>` : ''}
@@ -460,7 +460,7 @@ const FIN = {
     return `<div class="filters"><select onchange="UI.payMonth=this.value;render()" aria-label="الشهر"><option value="" ${!m ? 'selected' : ''}>كل الأشهر</option>${activeMonths().reverse().map(x => `<option value="${x}" ${x === m ? 'selected' : ''}>${monthName(x)}</option>`).join('')}</select></div>
     <section class="panel"><h2>${m ? 'المقبوضات في ' + monthName(m) : 'كل المقبوضات'} <span class="money-ok">${money(sumBy(list, p => p.amount))}</span> <button class="btn sm" onclick="csv('payments')">تصدير Excel</button></h2><div class="tbl-wrap"><table><thead><tr><th>الإيصال</th><th>الطالب</th><th>المبلغ</th><th>الطريقة</th><th>التاريخ</th><th></th></tr></thead><tbody>
     ${list.map(p => `<tr><td class="num">#${p.receiptNo || '—'}</td><td>${esc(p.studentName)}</td><td class="money-ok">${money(p.amount)}</td><td>${esc(p.method || '')}</td><td class="num">${esc(p.date)}</td>
-      <td class="actions"><button class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button><button class="btn sm danger" onclick="del('payments','${p.id}','هذا الإيصال')">حذف</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا توجد دفعات في هذا الشهر</td></tr>'}
+      <td class="actions"><button class="btn sm" onclick="printReceipt('${p.id}')">طباعة</button><button class="btn sm" onclick="paymentForm(null,'${p.id}')">تعديل</button><button class="btn sm" onclick="payToBook('${p.id}')">تحويل لكتب</button><button class="btn sm danger" onclick="del('payments','${p.id}','هذا الإيصال')">حذف</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا توجد دفعات في هذا الشهر</td></tr>'}
     </tbody></table></div></section>`;
   },
   debts() {
@@ -486,7 +486,7 @@ const FIN = {
     ${Object.keys(cats).length ? `<section class="panel"><h2>حسب البند</h2>${Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([c, v]) => `<div class="list-row"><span>${esc(c)}</span><b class="money-bad">${money(v)}</b></div>`).join('')}</section>` : ''}
     <section class="panel"><h2>المصروفات <span>${money(sumBy(list, e => e.amount))}</span></h2><div class="tbl-wrap"><table><thead><tr><th>البند</th><th>التصنيف</th><th>المبلغ</th><th>التاريخ</th><th></th></tr></thead><tbody>
     ${list.map(e => `<tr><td><b>${esc(e.title)}</b>${e.note ? `<div class="muted">${esc(e.note)}</div>` : ''}</td><td><span class="tag mute">${esc(e.category || 'أخرى')}</span></td><td class="money-bad">${money(e.amount)}</td><td class="num">${esc(e.date)}</td>
-      <td><button class="btn sm danger" onclick="del('expenses','${e.id}','هذا المصروف')">حذف</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">لا توجد مصروفات</td></tr>'}
+      <td class="actions"><button class="btn sm" onclick="expenseForm(D.expenses.find(x=>x.id==='${e.id}'))">تعديل</button><button class="btn sm danger" onclick="del('expenses','${e.id}','هذا المصروف')">حذف</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">لا توجد مصروفات</td></tr>'}
     </tbody></table></div></section>`;
   },
   books() {
@@ -505,12 +505,12 @@ const FIN = {
       return `<tr><td><b>${esc(b.studentName)}</b></td><td>${esc(b.title)}</td><td>${money(b.price)}</td><td class="${paid ? 'money-ok' : ''}">${money(paid)}</td>
       <td>${b.paid ? `<span class="tag ok">سدّد${b.paidDate ? ' ' + esc(fmtDate(b.paidDate)) : ''}</span>` : paid > 0 ? `<span class="tag warn">باقي ${fmt(left)}</span>` : '<span class="tag bad">لم يسدّد</span>'}</td>
       <td class="num">${esc(fmtDate(b.date))}</td>
-      <td class="actions">${b.paid ? `<button class="btn sm ghost" onclick="bookUnpay('${b.id}')">إلغاء السداد</button>` : `<button class="btn sm primary" onclick="bookPay('${b.id}')">تسجيل السداد</button>`}<button class="btn sm danger" onclick="del('books','${b.id}','هذا الكتاب')">حذف</button></td></tr>`; }).join('')
+      <td class="actions">${b.paid ? `<button class="btn sm ghost" onclick="bookUnpay('${b.id}')">إلغاء السداد</button>` : `<button class="btn sm primary" onclick="bookPay('${b.id}')">تسجيل السداد</button>`}<button class="btn sm" onclick="bookEditForm('${b.id}')">تعديل</button><button class="btn sm danger" onclick="del('books','${b.id}','هذا الكتاب')">حذف</button></td></tr>`; }).join('')
       || '<tr><td colspan="7" class="empty">لم تبِع أي كتاب بعد</td></tr>'}
     </tbody></table></div><p class="muted">الكتب منفصلة عن الرسوم الشهرية: لا تُضاف لمستحقات الطالب، ولها سدادها الخاص. ما يُحصَّل منها يدخل في إيراد الشهر.</p></section>
 
     <section class="panel"><h2>شراء الكتب <button class="btn sm" onclick="bookBuyForm()">+ شراء كتب</button></h2>
-      ${buys.map(e => `<div class="list-row"><span>${esc(e.title)} <span class="muted">${esc(fmtDate(e.date))}</span></span><span class="actions"><b class="money-bad">${money(e.amount)}</b><button class="btn sm danger" onclick="del('expenses','${e.id}','فاتورة الشراء هذه')">حذف</button></span></div>`).join('') || '<p class="empty">لم تسجّل شراء كتب بعد</p>'}
+      ${buys.map(e => `<div class="list-row"><span>${esc(e.title)} <span class="muted">${esc(fmtDate(e.date))}</span></span><span class="actions"><b class="money-bad">${money(e.amount)}</b><button class="btn sm" onclick="expenseForm(D.expenses.find(x=>x.id==='${e.id}'))">تعديل</button><button class="btn sm danger" onclick="del('expenses','${e.id}','فاتورة الشراء هذه')">حذف</button></span></div>`).join('') || '<p class="empty">لم تسجّل شراء كتب بعد</p>'}
       <p class="muted">شراء الكتب يُسجَّل كمصروف في بند "شراء كتب" ويدخل في إجمالي المصروفات.</p></section>`;
   },
 };
@@ -529,26 +529,57 @@ function reminderLink(s, b) {
 const studentOptions = sel => active().concat(D.students.filter(s => s.status === 'inactive'))
   .map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)} — ${esc(s.grade || '')}${s.status === 'inactive' ? ' (منقطع)' : ''}</option>`).join('');
 
-function paymentForm(sid) {
-  const remainingHint = id => { const s = studentById(id); return s ? `المتبقي عليه: ${fmt(bal(s).remaining)} ${cur()}` : ''; };
-  modal(`<h2>تسجيل دفعة</h2><div class="grid g2">
+const METHODS = ['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'];
+const methodOpts = sel => METHODS.map(m => `<option ${m === sel ? 'selected' : ''}>${m}</option>`).join('');
+// تسجيل دفعة جديدة أو تعديل دفعة (id). النوع: رسوم شهرية أو ثمن كتب (يُسجَّل في الكتب لا في الرسوم)
+function paymentForm(sid, id) {
+  const p = id ? D.payments.find(x => x.id === id) : null; if (id && !p) return;
+  if (p) sid = p.studentId;
+  const remainingHint = id => { const s = studentById(id); return s ? `المتبقي عليه: رسوم ${fmt(Math.max(0, bal(s).remaining))}${booksOwed(s) ? ` · كتب ${fmt(booksOwed(s))}` : ''} ${cur()}` : ''; };
+  modal(`<h2>${p ? `تعديل الإيصال ${p.receiptNo}` : 'تسجيل دفعة'}</h2><div class="grid g2">
     <label class="f" style="grid-column:1/-1">الطالب *<select name="studentId" required onchange="document.getElementById('rh').textContent=(${remainingHint})(this.value)"><option value="">اختر الطالب…</option>${studentOptions(sid)}</select><small class="muted" id="rh">${sid ? remainingHint(sid) : ''}</small></label>
-    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required></label>
-    <label class="f">طريقة الدفع<select name="method">${['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'].map(m => `<option>${m}</option>`).join('')}</select></label>
-    <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label>
-    <label class="f">ملاحظة<input name="note" placeholder="مثال: رسوم شهر أكتوبر"></label></div>
-    <div class="modal-actions"><button class="btn primary" value="ok">حفظ وطباعة الإيصال</button><button class="btn" value="save">حفظ فقط</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
-    async (data, btn) => { const r = await act('POST', '/api/payments', data, 'تم تسجيل الدفعة'); if (r && btn === 'ok') printReceipt(r.id); return !!r; });
+    ${p ? '' : `<label class="f" style="grid-column:1/-1">الدفعة عن *<select name="kind"><option value="fees">رسوم شهرية</option><option value="books">ثمن كتب (منفصل عن الرسوم)</option></select></label>`}
+    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required value="${p ? esc(p.amount) : ''}"></label>
+    <label class="f">طريقة الدفع<select name="method">${methodOpts(p?.method)}</select></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${esc(p?.date || D.today)}"></label>
+    <label class="f">ملاحظة / اسم الكتاب<input name="note" value="${esc(p?.note || '')}" placeholder="مثال: رسوم شهر أكتوبر"></label></div>
+    <div class="modal-actions">${p ? '<button class="btn primary" value="save">حفظ التعديل</button>' : '<button class="btn primary" value="ok">حفظ وطباعة الإيصال</button><button class="btn" value="save">حفظ فقط</button>'}<button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async (data, btn) => {
+      if (p) return !!(await act('PUT', `/api/payments/${p.id}`, data, 'تم تعديل الدفعة'));
+      if (data.kind === 'books') return !!(await act('POST', '/api/books', { studentId: data.studentId, title: data.note || 'كتب', price: data.amount, paid: 'yes', date: data.date, method: data.method }, 'تم تسجيل ثمن الكتب في الكتب (لا يدخل في الرسوم)'));
+      const r = await act('POST', '/api/payments', data, 'تم تسجيل الدفعة'); if (r && btn === 'ok') printReceipt(r.id); return !!r; });
+}
+// دفعة سُجّلت رسوماً بالخطأ وهي كتب
+function payToBook(id) {
+  const p = D.payments.find(x => x.id === id); if (!p) return;
+  modal(`<h2>تحويل الإيصال ${p.receiptNo} إلى كتب</h2><p class="muted" style="margin-top:0">${esc(p.studentName)} · ${money(p.amount)} · ${esc(p.date)}<br>سيُحذف من دفعات الرسوم ويُسجَّل كتاباً منفصلاً.</p><div class="grid g2">
+    <label class="f">اسم الكتاب<input name="title" value="${esc(p.note || 'كتب')}"></label>
+    <label class="f">ثمن الكتب<input type="number" min="1" step="any" name="price" value="${esc(p.amount)}"></label>
+    <label class="f" style="grid-column:1/-1">هل دفع ثمن الكتب فعلاً؟<select name="paid"><option value="no">لم يدفع — يظهر عليه في المتأخرات</option><option value="yes">نعم دفع هذا المبلغ</option></select></label></div>
+    <div class="modal-actions"><button class="btn primary" value="ok">تحويل</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => !!(await act('POST', `/api/payments/${id}/to-book`, data, 'تم التحويل إلى الكتب')));
+}
+function bookEditForm(id) {
+  const b = D.books.find(x => x.id === id); if (!b) return;
+  modal(`<h2>تعديل كتاب</h2><div class="grid g2">
+    <label class="f" style="grid-column:1/-1">الطالب<select name="studentId">${studentOptions(b.studentId)}</select></label>
+    <label class="f">اسم الكتاب *<input name="title" required value="${esc(b.title)}"></label>
+    <label class="f">السعر *<input type="number" min="0" step="any" name="price" required value="${esc(b.price)}"></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${esc(b.date || '')}"></label>
+    <label class="f">المدفوع منه<input disabled value="${fmt(N(b.paidAmount))}"><small class="muted">لتغييره: إلغاء السداد ثم تسجيله من جديد</small></label></div>
+    <div class="modal-actions"><button class="btn primary" value="ok">حفظ التعديل</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
+    async data => !!(await act('PUT', `/api/books/${id}`, data, 'تم تعديل الكتاب')));
 }
 function expenseForm(pre = {}) {
-  modal(`<h2>تسجيل مصروف</h2><div class="grid g2">
+  const ed = !!pre.id;
+  modal(`<h2>${ed ? 'تعديل مصروف' : 'تسجيل مصروف'}</h2><div class="grid g2">
     <label class="f">البند *<input name="title" required placeholder="مثال: فاتورة الكهرباء" value="${esc(pre.title || '')}"></label>
     <label class="f">التصنيف<select name="category">${(D.settings.expenseCategories || []).map(c => `<option ${c === pre.category ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required value="${pre.amount || ''}"></label>
-    <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${esc(pre.date || D.today)}"></label>
     <label class="f" style="grid-column:1/-1">ملاحظة<input name="note" value="${esc(pre.note || '')}"></label></div>
     <div class="modal-actions"><button class="btn primary" value="ok">حفظ المصروف</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
-    async data => !!(await act('POST', '/api/expenses', data, 'تم تسجيل المصروف')));
+    async data => !!(await (ed ? act('PUT', `/api/expenses/${pre.id}`, data, 'تم تعديل المصروف') : act('POST', '/api/expenses', data, 'تم تسجيل المصروف'))));
 }
 function bookForm(sid) {
   modal(`<h2>بيع كتاب لطالب</h2><div class="grid g2">
@@ -768,7 +799,8 @@ VIEWS.reports = () => {
   // رسوم هذا الشهر لكل طالب
   const rows = D.students.map(s => { const a = allocation(s)[m]; return a && a.due > 0 ? { s, ...a, paidIn: sumBy(pays.filter(p => p.studentId === s.id), p => p.amount) } : null; }).filter(Boolean)
     .sort((a, b) => String(a.s.grade).localeCompare(String(b.s.grade), 'ar') || String(a.s.join_date).localeCompare(String(b.s.join_date)) || String(a.s.name).localeCompare(String(b.s.name), 'ar'));
-  const cls = {}; rows.forEach(r => { const c = (cls[r.s.grade || 'بدون صف'] ||= { n: 0, due: 0, covered: 0 }); c.n++; c.due += r.due; c.covered += r.covered; });
+  const cls = {}; rows.forEach(r => { const c = (cls[r.s.grade || 'بدون صف'] ||= { n: 0, due: 0, covered: 0, paidIn: 0 }); c.n++; c.due += r.due; c.covered += r.covered; });
+  pays.forEach(p => { const st = studentById(p.studentId); const c = (cls[(st && st.grade) || 'بدون صف'] ||= { n: 0, due: 0, covered: 0, paidIn: 0 }); c.paidIn += N(p.amount); });
   const dueT = sumBy(rows, r => r.due), covT = sumBy(rows, r => r.covered);
   const joined = D.students.filter(s => monthOf(s.join_date) === m).length;
   const kv = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="list-row"><span>${esc(k)}</span><b>${money(v)}</b></div>`).join('') || '<p class="empty">لا يوجد</p>';
@@ -785,14 +817,14 @@ VIEWS.reports = () => {
   </div>
 
   <section class="panel"><h2>رسوم ${monthName(m)} <span class="muted">المستحق ${fmt(dueT)} · المحصّل منه ${fmt(covT)} · المتبقي ${fmt(dueT - covT)} ${cur()}</span></h2>
-    <div class="tbl-wrap"><table><thead><tr><th>الصف</th><th>الطلاب</th><th>رسوم الشهر</th><th>المحصّل منها</th><th>المتبقي</th><th>نسبة التحصيل</th></tr></thead><tbody>
-    ${Object.entries(cls).map(([k, c]) => `<tr><td><b>${esc(k)}</b></td><td class="num">${c.n}</td><td>${money(c.due)}</td><td class="money-ok">${money(c.covered)}</td><td class="${c.due - c.covered > 0.009 ? 'money-bad' : 'money-ok'}">${money(c.due - c.covered)}</td><td><span class="tag ${c.due && c.covered / c.due >= .9 ? 'ok' : 'warn'}">${c.due ? Math.round(c.covered / c.due * 100) : 100}٪</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا يوجد</td></tr>'}
+    <div class="tbl-wrap"><table><thead><tr><th>الصف</th><th>الطلاب</th><th>رسوم الشهر</th><th>دفعوه خلال الشهر</th><th>سُدّد من رسوم الشهر</th><th>المتبقي من رسوم الشهر</th><th>نسبة التحصيل</th></tr></thead><tbody>
+    ${Object.entries(cls).map(([k, c]) => `<tr><td><b>${esc(k)}</b></td><td class="num">${c.n}</td><td>${money(c.due)}</td><td class="money-ok"><b>${money(c.paidIn)}</b></td><td class="money-ok">${money(c.covered)}</td><td class="${c.due - c.covered > 0.009 ? 'money-bad' : 'money-ok'}">${money(c.due - c.covered)}</td><td><span class="tag ${c.due && c.covered / c.due >= .9 ? 'ok' : 'warn'}">${c.due ? Math.round(c.covered / c.due * 100) : 100}٪</span></td></tr>`).join('') || '<tr><td colspan="7" class="empty">لا يوجد</td></tr>'}
     </tbody></table></div>
     <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;color:var(--palm-ink)">تفاصيل كل طالب في ${monthName(m)} (${rows.length})</summary>
-    <div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الصف</th><th>رسوم الشهر</th><th>المحصّل منها</th><th>المتبقي</th><th>دفعه خلال الشهر</th></tr></thead><tbody>
+    <div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الصف</th><th>رسوم الشهر</th><th>سُدّد منها</th><th>المتبقي</th><th>دفعه خلال الشهر</th></tr></thead><tbody>
     ${rows.map(r => `<tr class="click" onclick="openStudent('${r.s.id}')"><td><b>${esc(r.s.name)}</b>${monthOf(r.s.join_date) === m ? ` <span class="tag info">التحق ${esc(fmtDate(r.s.join_date))}</span>` : ''}</td><td>${esc(r.s.grade || '')}</td><td>${money(r.due)}</td><td class="money-ok">${money(r.covered)}</td><td class="${r.left > 0 ? 'money-bad' : 'money-ok'}">${money(r.left)}</td><td>${r.paidIn ? money(r.paidIn) : '—'}</td></tr>`).join('')}
     </tbody></table></div></details>
-    <p class="muted">المدفوع يُوزَّع على الأشهر من الأقدم للأحدث: أي دفعة تسدّد الشهر الأقدم أولاً. "المقبوض في الشهر" أعلاه هو ما دخل الصندوق فعلاً خلاله.</p>
+    <p class="muted">"دفعوه خلال الشهر" = كل ما دفعه طلاب الصف في هذا الشهر (حسب تاريخ الإيصال). "سُدّد من رسوم الشهر" يختلف عنه لأن الدفعة تسدّد الشهر الأقدم أولاً: من دفع متأخراً من شهر سابق يذهب جزء من دفعته لذلك الشهر.</p>
   </section>
 
   <section class="panel"><h2>كتب ${monthName(m)} <button class="btn sm ghost" onclick="UI.finTab='books';go('finance')">إدارة الكتب</button></h2>
@@ -1505,20 +1537,21 @@ const ACC = {
     const ms = d.ms, list = (D.incomes || []).filter(x => ms.includes(monthOf(x.date)));
     return `<section class="panel"><h2>إيرادات أخرى — ${esc(P.label)} <span class="money-ok">${money(d.otherT)}</span> ${can('finance') ? '<button class="btn sm primary" onclick="incomeForm()">+ إيراد</button>' : ''}</h2>
     <p class="muted" style="margin-top:0">أي دخل غير الرسوم الشهرية والكتب: رسوم تسجيل، مواصلات، زي مدرسي، فعاليات ورحلات، دعم أو تبرع…</p>
-    ${list.map(x => `<div class="list-row"><span><b>${esc(x.title)}</b> <span class="tag mute">${esc(x.category || 'أخرى')}</span> <span class="muted">${esc(fmtDate(x.date))}${x.note ? ' · ' + esc(x.note) : ''}</span></span><span class="actions"><b class="money-ok">${money(x.amount)}</b><button class="btn sm danger" onclick="del('incomes','${x.id}','هذا الإيراد')">حذف</button></span></div>`).join('') || '<p class="empty">لا توجد إيرادات أخرى في هذه الفترة</p>'}</section>`;
+    ${list.map(x => `<div class="list-row"><span><b>${esc(x.title)}</b> <span class="tag mute">${esc(x.category || 'أخرى')}</span> <span class="muted">${esc(fmtDate(x.date))}${x.note ? ' · ' + esc(x.note) : ''}</span></span><span class="actions"><b class="money-ok">${money(x.amount)}</b>${can('finance') ? `<button class="btn sm" onclick="incomeForm('${x.id}')">تعديل</button>` : ''}<button class="btn sm danger" onclick="del('incomes','${x.id}','هذا الإيراد')">حذف</button></span></div>`).join('') || '<p class="empty">لا توجد إيرادات أخرى في هذه الفترة</p>'}</section>`;
   },
 };
 const INCOME_CATS = ['رسوم تسجيل', 'مواصلات', 'زي مدرسي', 'رحلات وفعاليات', 'دعم وتبرعات', 'أخرى'];
-function incomeForm() {
-  modal(`<h2>تسجيل إيراد آخر</h2><div class="grid g2">
-    <label class="f">البيان *<input name="title" required placeholder="مثال: رسوم تسجيل 3 طلاب"></label>
-    <label class="f">التصنيف<select name="category">${INCOME_CATS.map(c => `<option>${c}</option>`).join('')}</select></label>
-    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required></label>
-    <label class="f">التاريخ<input type="date" name="date" value="${D.today}"></label>
-    <label class="f">طريقة الدفع<select name="method">${['نقدي', 'تحويل بنكي', 'مدى', 'STC Pay'].map(m => `<option>${m}</option>`).join('')}</select></label>
-    <label class="f">ملاحظة<input name="note"></label></div>
+function incomeForm(id) {
+  const x = id ? (D.incomes || []).find(i => i.id === id) || {} : {};
+  modal(`<h2>${id ? 'تعديل إيراد' : 'تسجيل إيراد آخر'}</h2><div class="grid g2">
+    <label class="f">البيان *<input name="title" required placeholder="مثال: رسوم تسجيل 3 طلاب" value="${esc(x.title || '')}"></label>
+    <label class="f">التصنيف<select name="category">${INCOME_CATS.map(c => `<option ${c === x.category ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+    <label class="f">المبلغ *<input type="number" min="1" step="any" name="amount" required value="${esc(x.amount ?? '')}"></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${esc(x.date || D.today)}"></label>
+    <label class="f">طريقة الدفع<select name="method">${methodOpts(x.method)}</select></label>
+    <label class="f">ملاحظة<input name="note" value="${esc(x.note || '')}"></label></div>
     <div class="modal-actions"><button class="btn primary" value="ok">حفظ</button><button class="btn" value="cancel" formnovalidate>إلغاء</button></div>`,
-    async data => !!(await act('POST', '/api/incomes', data, 'تم تسجيل الإيراد')));
+    async data => !!(await (id ? act('PUT', `/api/incomes/${id}`, data, 'تم تعديل الإيراد') : act('POST', '/api/incomes', data, 'تم تسجيل الإيراد'))));
 }
 function drawForm() {
   modal(`<h2>تسجيل سحب شريك من الأرباح</h2><div class="grid g2">

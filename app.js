@@ -530,6 +530,24 @@ app.post('/api/payments', wrap(async (req, res) => {
     amount, method: req.body.method || 'نقدي', note: req.body.note || '', date: req.body.date || today() });
   res.json(p);
 }));
+// تعديل دفعة (المبلغ/التاريخ/الطريقة/الملاحظة/الطالب) — رقم الإيصال يبقى كما هو
+app.put('/api/payments/:id', wrap(async (req, res) => {
+  const p = await Payment.findOne({ id: req.params.id }); if (!p) return res.status(404).json({ error: 'الدفعة غير موجودة' });
+  if (req.body.amount !== undefined) { const a = parseFloat(req.body.amount); if (!(a > 0)) return res.status(400).json({ error: 'اكتب مبلغاً صحيحاً' }); p.amount = a; }
+  if (req.body.studentId && req.body.studentId !== p.studentId) { const st = await Student.findOne({ id: req.body.studentId }); if (!st) return res.status(400).json({ error: 'الطالب غير موجود' }); p.studentId = st.id; p.studentName = st.name; }
+  for (const k of ['method', 'date', 'note']) if (req.body[k] !== undefined) p[k] = req.body[k];
+  await p.save(); res.json(p);
+}));
+// دفعة سُجّلت كرسوم وهي ثمن كتب: تُحذف من الرسوم وتُسجَّل كتاباً (مسدّداً أو غير مسدّد)
+app.post('/api/payments/:id/to-book', wrap(async (req, res) => {
+  const p = await Payment.findOne({ id: req.params.id }); if (!p) return res.status(404).json({ error: 'الدفعة غير موجودة' });
+  const paid = req.body.paid !== 'no', price = parseFloat(req.body.price) || p.amount;
+  const b = await Book.create({ id: newId(), studentId: p.studentId, studentName: p.studentName, title: String(req.body.title || p.note || 'كتب').trim() || 'كتب', price: String(price), date: p.date,
+    pays: paid ? [{ amount: Math.min(price, p.amount), date: p.date, method: p.method || 'نقدي' }] : [], paidAmount: paid ? Math.min(price, p.amount) : 0,
+    paid: paid && p.amount >= price, paidDate: paid ? p.date : null });
+  await Payment.deleteOne({ id: p.id });
+  res.json(b);
+}));
 app.delete('/api/payments/:id', wrap(async (req, res) => { await Payment.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
 
 // ---- المصروفات ----
@@ -538,6 +556,11 @@ app.post('/api/expenses', wrap(async (req, res) => {
   if (!req.body.title || !(amount > 0)) return res.status(400).json({ error: 'اكتب البند والمبلغ' });
   const e = await Expense.create({ id: newId(), ...pick(req.body, ['title', 'category', 'date', 'note', 'staffId', 'month']), amount, date: req.body.date || today() });
   res.json(e);
+}));
+app.put('/api/expenses/:id', wrap(async (req, res) => {
+  const set = pick(req.body, ['title', 'category', 'date', 'note']);
+  if (req.body.amount !== undefined) { const a = parseFloat(req.body.amount); if (!(a > 0)) return res.status(400).json({ error: 'اكتب مبلغاً صحيحاً' }); set.amount = a; }
+  await Expense.updateOne({ id: req.params.id }, { $set: set }); res.json({ ok: true });
 }));
 app.delete('/api/expenses/:id', wrap(async (req, res) => { await Expense.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
 
@@ -571,6 +594,17 @@ app.put('/api/books/:id/pay', wrap(async (req, res) => {
   b.paidDate = b.pays.length ? b.pays[b.pays.length - 1].date : null;
   await b.save();
   res.json(b);
+}));
+// تعديل كتاب: الاسم/السعر/التاريخ/الطالب، ويُعاد حساب حالة السداد
+app.put('/api/books/:id', wrap(async (req, res) => {
+  const b = await Book.findOne({ id: req.params.id }); if (!b) return res.status(404).json({ error: 'الكتاب غير موجود' });
+  if (req.body.title) b.title = String(req.body.title).trim();
+  if (req.body.date) b.date = req.body.date;
+  if (req.body.price !== undefined) b.price = String(parseFloat(req.body.price) || 0);
+  if (req.body.studentId && req.body.studentId !== b.studentId) { const st = await Student.findOne({ id: req.body.studentId }); if (st) { b.studentId = st.id; b.studentName = st.name; } }
+  const price = parseFloat(b.price) || 0;
+  b.paidAmount = (b.pays || []).reduce((a, x) => a + (x.amount || 0), 0); b.paid = b.paidAmount >= price && price > 0;
+  await b.save(); res.json(b);
 }));
 app.delete('/api/books/:id', wrap(async (req, res) => { await Book.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
 
@@ -648,6 +682,11 @@ app.post('/api/incomes', wrap(async (req, res) => {
   const amount = parseFloat(req.body.amount);
   if (!req.body.title || !(amount > 0)) return res.status(400).json({ error: 'اكتب البيان والمبلغ' });
   res.json(await Income.create({ id: newId(), ...pick(req.body, ['title', 'category', 'method', 'note']), amount, date: req.body.date || today() }));
+}));
+app.put('/api/incomes/:id', wrap(async (req, res) => {
+  const set = pick(req.body, ['title', 'category', 'method', 'note', 'date']);
+  if (req.body.amount !== undefined) { const a = parseFloat(req.body.amount); if (!(a > 0)) return res.status(400).json({ error: 'اكتب مبلغاً صحيحاً' }); set.amount = a; }
+  await Income.updateOne({ id: req.params.id }, { $set: set }); res.json({ ok: true });
 }));
 app.delete('/api/incomes/:id', wrap(async (req, res) => { await Income.deleteOne({ id: req.params.id }); res.json({ ok: true }); }));
 app.post('/api/draws', wrap(async (req, res) => {
